@@ -10,7 +10,7 @@ struct LogoView: View {
 
     var body: some View {
         Group {
-            if let nsImage = NSImage(named: "logo.jpeg") {
+            if let nsImage = NSImage(named: "Logo") {
                 Image(nsImage: nsImage)
                     .resizable()
                     .scaledToFill()
