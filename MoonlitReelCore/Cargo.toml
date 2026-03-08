@@ -1,0 +1,86 @@
+[package]
+name = "moonlit-reel-core"
+version = "0.1.0"
+edition = "2021"
+authors = ["Martin Aziz"]
+description = "High-performance media library engine for Moonlit Reel"
+
+[lib]
+name = "moonlit_reel_core"
+crate-type = ["staticlib", "rlib"]
+
+[dependencies]
+# Parallel filesystem walking
+walkdir    = "2.5"
+rayon      = "1.10"
+notify     = { version = "6.1", features = ["serde"] }
+
+# Metadata parsing (zero-allocation where possible)
+id3        = "1.14"
+metaflac   = "0.2"
+symphonia  = { version = "0.5", features = [
+    "mp3", "aac", "flac", "ogg", "wav", "aiff",
+    "alac", "mkv", "isomp4", "opus"
+]}
+
+# Full-text search
+tantivy    = "0.22"
+
+# Embedded key-value persistence
+sled       = "0.34"
+
+# Audio I/O and processing
+cpal       = "0.15"
+rodio      = "0.19"
+rubato     = "0.15"         # High-quality resampling, tempo/pitch independence
+
+# Async runtime
+tokio      = { version = "1", features = ["full"] }
+
+# Serialization
+serde      = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Error handling
+anyhow     = "1"
+thiserror  = "1"
+
+# Hashing for file change detection
+blake3     = "1"
+
+# Logging
+tracing            = "0.1"
+tracing-subscriber = { version = "0.3", features = ["fmt", "json"] }
+
+# Channel for scanner → consumer communication
+crossbeam-channel = "0.5"
+
+# FFI helpers
+libc = "0.2"
+
+# Local HTTP remote (optional, disabled by default)
+axum       = { version = "0.7", optional = true }
+
+# ML inference placeholder (disabled by default – post-MVP)
+# tract-onnx = { version = "0.21", optional = true }
+
+[features]
+default     = []
+http-remote = ["axum"]
+# mood-ai   = ["tract-onnx"]   # Post-MVP: on-device mood analysis
+
+[dev-dependencies]
+tempfile = "3"  # Temporary directories for tests
+
+[build-dependencies]
+# cbindgen is run as an external tool, not a build dep
+# but we keep this section for documentation
+
+[profile.release]
+opt-level     = 3
+lto           = "fat"
+codegen-units = 1
+strip         = "symbols"
+
+[profile.dev]
+opt-level = 1  # avoid fully unoptimized scanner in debug

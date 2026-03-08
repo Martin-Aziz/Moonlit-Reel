@@ -1,0 +1,120 @@
+name: CI
+
+on:
+  push:
+    branches: [main, "feature/**", "fix/**"]
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: short
+
+jobs:
+  # ── Rust: lint + test ─────────────────────────────────────────────────────
+  rust:
+    name: Rust — lint & test
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain (stable)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+          components: clippy, rustfmt
+
+      - name: Cache Cargo registry + build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: MoonlitReelCore
+
+      - name: Format check
+        working-directory: MoonlitReelCore
+        run: cargo fmt --all -- --check
+
+      - name: Clippy (deny warnings)
+        working-directory: MoonlitReelCore
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: Run tests
+        working-directory: MoonlitReelCore
+        run: cargo test --all-features
+
+      - name: Build release artifact
+        working-directory: MoonlitReelCore
+        run: cargo build --release --target aarch64-apple-darwin
+
+  # ── Swift: build + test ───────────────────────────────────────────────────
+  swift:
+    name: Swift — build & test
+    runs-on: macos-latest
+    needs: rust   # Rust library must build first for linking
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust (for build script)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: MoonlitReelCore
+
+      - name: Install cbindgen
+        run: cargo install cbindgen
+
+      - name: Build Rust core library
+        working-directory: MoonlitReelCore
+        run: |
+          cargo build --release --target aarch64-apple-darwin
+          mkdir -p include
+          cbindgen --config cbindgen.toml --crate moonlit-reel-core \
+            --output include/moonlit_reel_core.h
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+
+      - name: Build (Debug)
+        run: |
+          xcodebuild build \
+            -project "Moonlit Reel.xcodeproj" \
+            -scheme "Moonlit Reel" \
+            -configuration Debug \
+            -destination "platform=macOS,arch=arm64" \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            ONLY_ACTIVE_ARCH=YES \
+            | xcpretty
+
+      - name: Run Unit Tests
+        run: |
+          xcodebuild test \
+            -project "Moonlit Reel.xcodeproj" \
+            -scheme "Moonlit ReelTests" \
+            -destination "platform=macOS,arch=arm64" \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            | xcpretty
+
+  # ── Security audit ────────────────────────────────────────────────────────
+  audit:
+    name: Security audit
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit
+
+      - name: Run Cargo audit
+        working-directory: MoonlitReelCore
+        run: cargo audit
