@@ -60,6 +60,17 @@ enum Theme: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
+    var isDark: Bool {
+        switch self {
+        case .roseNight, .moonlightVinyl: return true
+        case .cozyLatte, .dreamySakura:   return false
+        }
+    }
+
+    var colorScheme: ColorScheme {
+        isDark ? .dark : .light
+    }
+
     // MARK: - Theme Properties
 
     var colors: ThemeColors {

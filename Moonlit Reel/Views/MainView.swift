@@ -64,6 +64,7 @@ struct MainView: View {
             .ignoresSafeArea(.keyboard)
         }
         .background(themeService.gradients.backgroundGradient)
+        .colorScheme(themeService.currentTheme.colorScheme)
         .sheet(isPresented: $isShowingFullscreenPlayer) {
             FullscreenPlayerView()
         }

@@ -167,7 +167,8 @@ final class PlayerService {
             at: nil,
             completionCallbackType: .dataPlayedBack
         ) { [weak self] _ in
-            Task { @MainActor in self?.handlePlaybackCompletion() }
+            guard let self else { return }
+            Task { @MainActor [self] in self.handlePlaybackCompletion() }
         }
 
         if state.isPlaying {
@@ -200,6 +201,11 @@ final class PlayerService {
     func setEqBand(index: Int, gainDB: Float) {
         guard eqNode.bands.indices.contains(index) else { return }
         eqNode.bands[index].gain = gainDB
+    }
+
+    func eqBandGain(at index: Int) -> Float {
+        guard eqNode.bands.indices.contains(index) else { return 0 }
+        return eqNode.bands[index].gain
     }
 
     func setEqEnabled(_ enabled: Bool) {
@@ -294,7 +300,8 @@ final class PlayerService {
                 }
 
                 playerNode.scheduleFile(audioFile, at: nil, completionCallbackType: .dataPlayedBack) { [weak self] _ in
-                    Task { @MainActor in self?.handlePlaybackCompletion() }
+                    guard let self else { return }
+                    Task { @MainActor [self] in self.handlePlaybackCompletion() }
                 }
 
                 await MainActor.run {
@@ -319,11 +326,12 @@ final class PlayerService {
         videoPlayerObservers.forEach { $0.invalidate() }
         videoPlayerObservers = [
             videoPlayer.observe(\.timeControlStatus) { [weak self] player, _ in
-                Task { @MainActor in
+                guard let self else { return }
+                Task { @MainActor [self] in
                     switch player.timeControlStatus {
-                    case .playing:   self?.state.status = .playing
-                    case .paused:    self?.state.status = .paused
-                    case .waitingToPlayAtSpecifiedRate: self?.state.status = .loading
+                    case .playing:   self.state.status = .playing
+                    case .paused:    self.state.status = .paused
+                    case .waitingToPlayAtSpecifiedRate: self.state.status = .loading
                     @unknown default: break
                     }
                 }

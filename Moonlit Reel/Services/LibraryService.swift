@@ -138,8 +138,9 @@ final class LibraryService {
 
         // Parallel parsing: collect paths first, then parse in task group
         var paths: [URL] = []
-        for case let url as URL in enumerator {
-            guard (try? url.resourceValues(forKeys: [.isRegularFileKey]))?.isRegularFile == true,
+        for item in enumerator.allObjects {
+            guard let url = item as? URL,
+                  (try? url.resourceValues(forKeys: [.isRegularFileKey]))?.isRegularFile == true,
                   isSupportedMediaFile(url) else { continue }
             paths.append(url)
         }

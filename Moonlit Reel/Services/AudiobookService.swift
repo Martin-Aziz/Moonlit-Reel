@@ -69,7 +69,6 @@ final class AudiobookService {
     /// Jump to a specific chapter.
     func play(book: AudiobookItem, chapterIndex: Int, startAt positionSeconds: Double = 0) {
         guard book.chapters.indices.contains(chapterIndex) else { return }
-        let chapter = book.chapters[chapterIndex]
         currentBook = book
 
         // Build a queue: current chapter first, then remaining chapters as MediaItems

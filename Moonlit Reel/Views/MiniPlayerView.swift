@@ -250,13 +250,14 @@ struct PlayerScrubber: View {
 // MARK: - Mini Spectrum (visualizer thumbnail)
 
 struct MiniSpectrumView: View {
+    @Environment(\.themeService) var themeService
     let magnitudes: [Float]
 
     var body: some View {
         HStack(alignment: .bottom, spacing: 1) {
             ForEach(0..<min(16, magnitudes.count), id: \.self) { i in
                 RoundedRectangle(cornerRadius: 1)
-                    .fill(.tint)
+                    .fill(themeService.visualizerColors.first ?? .accentColor)
                     .frame(width: 2, height: CGFloat(magnitudes[i]) * 20)
                     .animation(.easeOut(duration: 0.1), value: magnitudes[i])
             }
@@ -269,6 +270,7 @@ struct MiniSpectrumView: View {
 struct FullscreenPlayerView: View {
     @Environment(\.playerService)    var playerService
     @Environment(\.audiobookService) var audiobookService
+    @Environment(\.themeService)     var themeService
     @Environment(\.dismiss)          var dismiss
 
     @State private var artwork: Image? = nil
@@ -367,6 +369,7 @@ struct FullscreenPlayerView: View {
             }
         }
         .frame(minWidth: 500, minHeight: 600)
+        .colorScheme(themeService.currentTheme.colorScheme)
         .onChange(of: state.currentItem?.id) { _, id in
             loadArtwork(for: id)
         }
@@ -379,13 +382,15 @@ struct FullscreenPlayerView: View {
     }
 
     private var artworkBackground: some View {
-        Group {
+        ZStack {
+            themeService.gradients.fullPlayerBackground
+                .ignoresSafeArea()
+            ThemeAmbientEffects()
             if let artwork {
                 artwork.resizable().scaledToFill().ignoresSafeArea()
-                    .blur(radius: 60).opacity(0.4)
+                    .blur(radius: 60).opacity(0.25)
             }
         }
-        .background(.black)
     }
 
     private var artworkCircle: some View {

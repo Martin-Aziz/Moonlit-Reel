@@ -109,7 +109,7 @@ final class SearchService {
 
 // MARK: - Search algorithm (runs off MainActor)
 
-private func performSearch(
+private nonisolated func performSearch(
     query: String,
     items: [MediaItem],
     filter: SearchFilter
@@ -139,7 +139,7 @@ private func performSearch(
     return results.sorted { $0.relevanceScore > $1.relevanceScore }
 }
 
-private func scoreItem(_ item: MediaItem, tokens: [String]) -> (Double, [String: String]) {
+private nonisolated func scoreItem(_ item: MediaItem, tokens: [String]) -> (Double, [String: String]) {
     let searchFields: [(name: String, value: String, weight: Double)] = [
         ("title",  item.title        ?? item.displayTitle, 3.0),
         ("artist", item.artist       ?? "",                 2.0),
@@ -188,7 +188,7 @@ private func scoreItem(_ item: MediaItem, tokens: [String]) -> (Double, [String:
     return (totalScore, highlights)
 }
 
-private func tokenize(_ query: String) -> [String] {
+private nonisolated func tokenize(_ query: String) -> [String] {
     query
         .trimmingCharacters(in: .whitespaces)
         .components(separatedBy: .whitespaces)
@@ -200,14 +200,14 @@ private struct QualifiedToken {
     let value: String
 }
 
-private func parseQualifiedToken(_ token: String) -> QualifiedToken? {
+private nonisolated func parseQualifiedToken(_ token: String) -> QualifiedToken? {
     let parts = token.split(separator: ":", maxSplits: 1)
     guard parts.count == 2 else { return nil }
     return QualifiedToken(field: String(parts[0]), value: String(parts[1]))
 }
 
 /// Tolerance-1 fuzzy matching using sliding window.
-private func fuzzyMatch(token: String, in text: String) -> Bool {
+private nonisolated func fuzzyMatch(token: String, in text: String) -> Bool {
     guard token.count >= 3 else { return false }
     let textChars = Array(text)
     let tokenChars = Array(token)

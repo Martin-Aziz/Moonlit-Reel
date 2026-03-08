@@ -67,11 +67,11 @@ struct MediaItem: Identifiable, Hashable, Codable, Sendable {
     // ── Derived display properties ───────────────────────────────────────────
 
     /// Display title: tag title if present, otherwise filename stem.
-    var displayTitle: String {
+    nonisolated var displayTitle: String {
         title ?? url.deletingPathExtension().lastPathComponent
     }
 
-    var displayArtist: String {
+    nonisolated var displayArtist: String {
         artist ?? albumArtist ?? "Unknown Artist"
     }
 
@@ -97,7 +97,7 @@ struct MediaItem: Identifiable, Hashable, Codable, Sendable {
 
 extension MediaItem {
     /// Comparator for default library sort: album artist → album → disc → track.
-    static func libraryOrder(_ a: MediaItem, _ b: MediaItem) -> Bool {
+    nonisolated static func libraryOrder(_ a: MediaItem, _ b: MediaItem) -> Bool {
         let aa = a.albumArtist ?? a.artist ?? ""
         let ba = b.albumArtist ?? b.artist ?? ""
         if aa != ba { return aa.localizedCaseInsensitiveCompare(ba) == .orderedAscending }

@@ -81,7 +81,7 @@ struct EqView: View {
                         label: bandLabels[idx],
                         value: Binding(
                             get: {
-                                Double(playerService.state.isEqEnabled ? 0 : 0)
+                                Double(playerService.eqBandGain(at: idx))
                             },
                             set: { playerService.setEqBand(index: idx, gainDB: Float($0)) }
                         )

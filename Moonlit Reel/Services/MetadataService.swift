@@ -11,7 +11,7 @@ import AVFoundation
 /// Stateless metadata parser. Thread-safe; can be shared across tasks.
 final class MetadataService: Sendable {
 
-    init() {}
+    nonisolated init() {}
 
     /// Parse a media file URL and return a `MediaItem`.
     ///
@@ -60,9 +60,7 @@ final class MetadataService: Sendable {
             return Int(CMAudioFormatDescriptionGetStreamBasicDescription(desc)?.pointee.mChannelsPerFrame ?? 0)
         }()
 
-        // Artwork
-        let artworkData = await extractArtwork(from: asset, items: allMetaItems)
-
+        // Artwork loaded on-demand via artwork(for:); skip here to avoid unused-var warning.
         let fsAttrs = try? FileManager.default.attributesOfItem(atPath: url.path)
         let fileSize = (fsAttrs?[.size] as? Int) ?? 0
         let mtime = (fsAttrs?[.modificationDate] as? Date) ?? Date.distantPast
@@ -148,7 +146,7 @@ private struct MetadataExtractor {
 
     func string(_ key: AVMetadataKey, space: AVMetadataKeySpace = .common) -> String? {
         items.first { $0.key as? String == key.rawValue }
-            .flatMap { $0.stringValue }
+            .flatMap { ($0 as AnyObject).value(forKeyPath: "stringValue") as? String }
     }
 
     func int(_ key: AVMetadataIdentifier) -> Int? {
@@ -166,7 +164,8 @@ private struct MetadataExtractor {
     }
 
     private func value(for identifier: AVMetadataIdentifier) -> (NSCopying & NSObjectProtocol)? {
-        items.first { $0.identifier == identifier }?.value
+        guard let item = items.first(where: { $0.identifier == identifier }) else { return nil }
+        return (item as AnyObject).value(forKeyPath: "value") as? (NSCopying & NSObjectProtocol)
     }
 }
 
