@@ -9,6 +9,7 @@ import SwiftUI
 struct MiniPlayerView: View {
     @Environment(\.playerService)    var playerService
     @Environment(\.audiobookService) var audiobookService
+    @Environment(\.themeService)     var themeService
     @Binding var isShowingFullscreen: Bool
 
     @State private var artwork: Image? = nil

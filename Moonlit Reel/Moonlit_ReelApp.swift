@@ -13,6 +13,7 @@ struct MoonlitReelApp: App {
     @State private var libraryService   = LibraryService()
     @State private var audiobookService: AudiobookService
     @State private var searchService:   SearchService
+    @State private var themeService     = ThemeService()
 
     init() {
         let player  = PlayerService()
@@ -34,6 +35,7 @@ struct MoonlitReelApp: App {
                 .environment(\.audiobookService, audiobookService)
                 .environment(\.searchService,    searchService)
                 .environment(\.metadataService,  MetadataService())
+                .environment(\.themeService,     themeService)
         }
         .windowStyle(.titleBar)
         .windowToolbarStyle(.unified(showsTitle: true))

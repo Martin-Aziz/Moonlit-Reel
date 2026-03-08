@@ -10,6 +10,7 @@ struct LibraryView: View {
     @Environment(\.libraryService) var libraryService
     @Environment(\.playerService)  var playerService
     @Environment(\.searchService)  var searchService
+    @Environment(\.themeService)   var themeService
 
     @State private var sortOrder: [KeyPathComparator<MediaItem>] = [
         .init(\.displayArtist, order: .forward),
@@ -107,16 +108,36 @@ struct LibraryView: View {
     // MARK: - Empty State
 
     private var emptyState: some View {
-        ContentUnavailableView {
-            Label("No Music Yet", systemImage: "music.note")
-        } description: {
-            Text("Add a folder containing your music files.")
-        } actions: {
-            Button("Add Folder") {
+        VStack(spacing: 20) {
+            Spacer()
+
+            LogoView(size: 80, showShadow: true)
+
+            VStack(spacing: 8) {
+                Text("No Music Yet")
+                    .font(.title2)
+                    .fontWeight(.semibold)
+                    .foregroundColor(themeService.colors.primary)
+
+                Text("Add a folder containing your music files to get started.")
+                    .font(.body)
+                    .foregroundColor(themeService.colors.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            .padding(.horizontal)
+
+            Button {
                 Task { await libraryService.addFolderInteractively() }
+            } label: {
+                Label("Add Folder", systemImage: "folder.badge.plus")
+                    .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
+            .padding(.horizontal, 40)
+
+            Spacer()
         }
+        .frame(maxWidth: .infinity)
     }
 
     // MARK: - Toolbar

@@ -8,9 +8,10 @@ import SwiftUI
 // MARK: - Spectrum Visualizer
 
 struct SpectrumVisualizerView: View {
+    @Environment(\.themeService) var themeService
+
     let magnitudes: [Float]
     var barCount: Int = 64
-    var barColor: Color = .accentColor
 
     var body: some View {
         HStack(alignment: .bottom, spacing: 2) {
@@ -19,18 +20,19 @@ struct SpectrumVisualizerView: View {
                     .fill(barGradient(index: i, total: barCount))
                     .frame(maxWidth: .infinity)
                     .frame(height: max(2, CGFloat(magnitudes[i]) * 60))
-                    .animation(.easeOut(duration: 0.08), value: magnitudes[i])
+                    .animation(.easeOut(duration: themeService.animations.barAnimationDuration), value: magnitudes[i])
             }
         }
+        .drawingGroup()  // GPU-efficient compositing
     }
 
     private func barGradient(index: Int, total: Int) -> LinearGradient {
-        let hue = Double(index) / Double(total) * 0.5  // blue → green
+        let colors = themeService.visualizerColors
+        let colorIndex = Int(Double(index) / Double(total) * Double(colors.count - 1))
+        let color = colors[min(colorIndex, colors.count - 1)]
+
         return LinearGradient(
-            colors: [
-                Color(hue: hue + 0.5, saturation: 0.9, brightness: 0.9),
-                Color(hue: hue + 0.5, saturation: 0.9, brightness: 0.6)
-            ],
+            colors: [color, color.opacity(0.6)],
             startPoint: .top,
             endPoint: .bottom
         )
@@ -218,6 +220,8 @@ private struct QueueTrackRow: View {
 
 struct SettingsView: View {
     @Environment(\.dismiss) var dismiss
+    @Environment(\.themeService) var themeService
+
     @AppStorage("settings.crossfadeDuration")     var crossfadeDuration: Double = 0
     @AppStorage("settings.replayGainEnabled")     var replayGainEnabled: Bool = false
     @AppStorage("settings.useAlbumGain")          var useAlbumGain: Bool = true
@@ -265,6 +269,16 @@ struct SettingsView: View {
 
                 // ── Appearance ───────────────────────────────────────────────
                 Section("Appearance") {
+                    Picker("Theme", selection: Binding(
+                        get: { themeService.currentTheme },
+                        set: { themeService.setTheme($0) }
+                    )) {
+                        ForEach(Theme.allCases) { theme in
+                            Text(theme.rawValue).tag(theme)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+
                     Toggle("Show Visualizer in Mini Player", isOn: $showVisualizerInMini)
                 }
 
@@ -287,16 +301,14 @@ struct SettingsView: View {
 
                 // ── About ────────────────────────────────────────────────────
                 Section("About") {
+                    LogoWithText()
+
+                    Divider()
+
                     HStack {
                         Text("Version")
                         Spacer()
                         Text(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0")
-                            .foregroundStyle(.secondary)
-                    }
-                    HStack {
-                        Text("Moonlit Reel")
-                        Spacer()
-                        Text("Open-source, offline-first media")
                             .foregroundStyle(.secondary)
                     }
                 }

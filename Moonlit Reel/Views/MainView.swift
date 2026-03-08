@@ -37,6 +37,7 @@ struct MainView: View {
     @Environment(\.libraryService)   var libraryService
     @Environment(\.audiobookService) var audiobookService
     @Environment(\.searchService)    var searchService
+    @Environment(\.themeService)     var themeService
 
     @State private var selectedSection: NavigationSection? = .library
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
@@ -56,11 +57,13 @@ struct MainView: View {
             // ── Persistent mini-player ────────────────────────────────────────
             VStack(spacing: 0) {
                 Divider()
+                    .foregroundColor(themeService.colors.dividerColor)
                 MiniPlayerView(isShowingFullscreen: $isShowingFullscreenPlayer)
-                    .background(.bar)
+                    .background(themeService.gradients.miniPlayerGradient)
             }
             .ignoresSafeArea(.keyboard)
         }
+        .background(themeService.gradients.backgroundGradient)
         .sheet(isPresented: $isShowingFullscreenPlayer) {
             FullscreenPlayerView()
         }
@@ -82,6 +85,14 @@ struct MainView: View {
         .listStyle(.sidebar)
         .navigationSplitViewColumnWidth(min: 160, ideal: 200, max: 260)
         .navigationTitle("Moonlit Reel")
+        .safeAreaInset(edge: .top) {
+            VStack(spacing: 12) {
+                LogoWithText()
+                Divider()
+            }
+            .padding(8)
+            .background(Color(nsColor: .controlBackgroundColor).opacity(0.5))
+        }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button(action: { Task { await libraryService.addFolderInteractively() } }) {

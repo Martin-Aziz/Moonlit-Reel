@@ -37,6 +37,10 @@ struct MetadataServiceKey: EnvironmentKey {
     static let defaultValue = MetadataService()
 }
 
+struct ThemeServiceKey: EnvironmentKey {
+    static let defaultValue = ThemeService()
+}
+
 // MARK: - EnvironmentValues Extensions
 
 extension EnvironmentValues {
@@ -63,5 +67,10 @@ extension EnvironmentValues {
     var metadataService: MetadataService {
         get { self[MetadataServiceKey.self] }
         set { self[MetadataServiceKey.self] = newValue }
+    }
+
+    var themeService: ThemeService {
+        get { self[ThemeServiceKey.self] }
+        set { self[ThemeServiceKey.self] = newValue }
     }
 }
