@@ -10,7 +10,7 @@ import SwiftUI
 struct SpectrumVisualizerView: View {
     let magnitudes: [Float]
     var barCount: Int = 64
-    var barColor: Color = .tint
+    var barColor: Color = .accentColor
 
     var body: some View {
         HStack(alignment: .bottom, spacing: 2) {
@@ -65,7 +65,7 @@ struct EqView: View {
                             playerService.applyEqPreset(preset)
                         }
                         .buttonStyle(.bordered)
-                        .tint(selectedPreset?.name == preset.name ? .tint : .secondary)
+                        .foregroundStyle(selectedPreset?.name == preset.name ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
                         .controlSize(.small)
                     }
                 }
@@ -197,7 +197,7 @@ private struct QueueTrackRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(track.displayTitle)
                     .fontWeight(isPlaying ? .semibold : .regular)
-                    .foregroundStyle(isPlaying ? .tint : .primary)
+                    .foregroundStyle(isPlaying ? AnyShapeStyle(.tint) : AnyShapeStyle(.primary))
                     .lineLimit(1)
                 Text(track.displayArtist)
                     .font(.caption)

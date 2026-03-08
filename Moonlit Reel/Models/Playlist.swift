@@ -4,6 +4,7 @@
 // LAYER:   Domain Model
 
 import Foundation
+import SwiftUI
 
 // MARK: - Static Playlist
 

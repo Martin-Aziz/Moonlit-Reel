@@ -88,7 +88,7 @@ struct MiniPlayerView: View {
                 // Shuffle / Repeat
                 Button(action: {}) {
                     Image(systemName: state.isShuffled ? "shuffle.circle.fill" : "shuffle")
-                        .foregroundStyle(state.isShuffled ? .tint : .secondary)
+                        .foregroundStyle(state.isShuffled ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
                 }
                 .buttonStyle(.plain)
 
@@ -118,7 +118,7 @@ struct MiniPlayerView: View {
                 // Repeat
                 Button(action: cycleRepeatMode) {
                     Image(systemName: state.repeatMode.systemImage)
-                        .foregroundStyle(state.repeatMode != .off ? .tint : .secondary)
+                        .foregroundStyle(state.repeatMode != .off ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
                 }
                 .buttonStyle(.plain)
             }
@@ -126,7 +126,10 @@ struct MiniPlayerView: View {
 
             // Scrubber
             PlayerScrubber(
-                position: $playerService.state.positionSeconds,
+                position: Binding(
+                    get: { state.positionSeconds },
+                    set: { playerService.state.positionSeconds = $0 }
+                ),
                 duration: state.currentDuration,
                 onSeek: playerService.seek(to:)
             )
@@ -324,7 +327,10 @@ struct FullscreenPlayerView: View {
 
                 // Scrubber
                 PlayerScrubber(
-                    position: $playerService.state.positionSeconds,
+                    position: Binding(
+                        get: { state.positionSeconds },
+                        set: { playerService.state.positionSeconds = $0 }
+                    ),
                     duration: state.currentDuration,
                     onSeek: playerService.seek(to:)
                 )

@@ -83,7 +83,6 @@ private struct AudiobookCardView: View {
                 // Progress bar
                 ProgressView(value: book.progressFraction)
                     .progressViewStyle(.linear)
-                    .tint(.tint)
 
                 Text("\(book.formattedRemaining) remaining")
                     .font(.caption2)
@@ -177,7 +176,6 @@ struct AudiobookPlayerView: View {
             VStack(spacing: 4) {
                 ProgressView(value: book.progressFraction)
                     .progressViewStyle(.linear)
-                    .tint(.tint)
                 HStack {
                     Text(formatTime(book.elapsedSeconds))
                     Spacer()
@@ -191,7 +189,10 @@ struct AudiobookPlayerView: View {
 
             // Chapter progress scrubber
             PlayerScrubber(
-                position: $playerService.state.positionSeconds,
+                position: Binding(
+                    get: { state.positionSeconds },
+                    set: { playerService.state.positionSeconds = $0 }
+                ),
                 duration: state.currentDuration,
                 onSeek: playerService.seek(to:)
             )
@@ -264,7 +265,7 @@ struct AudiobookPlayerView: View {
                     audiobookService.setSpeed(speed)
                 }
                 .buttonStyle(.bordered)
-                .tint(audiobookService.playbackRate == speed ? .tint : .secondary)
+                .foregroundStyle(audiobookService.playbackRate == speed ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
                 .controlSize(.mini)
             }
         }
@@ -317,7 +318,7 @@ struct AudiobookPlayerView: View {
             } label: {
                 Image(systemName: audiobookService.sleepTimer.isActive
                     ? "moon.zzz.fill" : "moon.zzz")
-                    .foregroundStyle(audiobookService.sleepTimer.isActive ? .tint : .primary)
+                    .foregroundStyle(audiobookService.sleepTimer.isActive ? AnyShapeStyle(.tint) : AnyShapeStyle(.primary))
             }
             .help("Sleep Timer")
 
@@ -367,7 +368,7 @@ private struct ChapterRowView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(chapter.title)
                     .fontWeight(isCurrent ? .semibold : .regular)
-                    .foregroundStyle(isCurrent ? .tint : .primary)
+                    .foregroundStyle(isCurrent ? AnyShapeStyle(.tint) : AnyShapeStyle(.primary))
                     .lineLimit(2)
                 Text(chapter.formattedDuration)
                     .font(.caption2)

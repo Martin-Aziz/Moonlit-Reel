@@ -236,7 +236,10 @@ struct VideoPlayerView: View {
             VStack(spacing: 8) {
                 // Scrubber
                 PlayerScrubber(
-                    position: $playerService.state.positionSeconds,
+                    position: Binding(
+                        get: { playerService.state.positionSeconds },
+                        set: { playerService.state.positionSeconds = $0 }
+                    ),
                     duration: playerService.state.currentDuration,
                     onSeek: playerService.seek(to:)
                 )

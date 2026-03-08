@@ -6,6 +6,7 @@
 
 import Foundation
 import Combine
+import SwiftUI
 
 /// Transport state of the media player.
 enum PlaybackStatus: Equatable {

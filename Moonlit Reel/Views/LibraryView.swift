@@ -48,7 +48,7 @@ struct LibraryView: View {
             sortOrder: $sortOrder,
             columnCustomization: $columnCustomization
         ) {
-            TableColumn("#", value: \.trackNumber.mapped { $0.map(String.init) ?? "" }) { item in
+            TableColumn("#") { item in
                 Text(item.trackNumber.map(String.init) ?? "")
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
@@ -165,16 +165,8 @@ private struct TrackRowView: View {
                 Color.clear.frame(width: 14)
             }
             Text(item.displayTitle)
-                .foregroundStyle(isPlaying ? .tint : .primary)
+                .foregroundStyle(isPlaying ? AnyShapeStyle(.tint) : AnyShapeStyle(.primary))
         }
-    }
-}
-
-// MARK: - Optional KeyPath mapping helper
-
-private extension Optional {
-    func mapped<T>(_ transform: (Wrapped) -> T) -> T? {
-        self.map(transform)
     }
 }
 
@@ -251,17 +243,6 @@ private struct AlbumCardView: View {
            let nsImage = NSImage(data: data) {
             artwork = Image(nsImage: nsImage)
         }
-    }
-}
-
-private struct MetadataServiceKey: EnvironmentKey {
-    static let defaultValue = MetadataService()
-}
-
-extension EnvironmentValues {
-    var metadataService: MetadataService {
-        get { self[MetadataServiceKey.self] }
-        set { self[MetadataServiceKey.self] = newValue }
     }
 }
 

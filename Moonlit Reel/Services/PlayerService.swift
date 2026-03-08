@@ -8,6 +8,7 @@
 
 import Foundation
 import AVFoundation
+import AudioUnit
 
 /// Manages all audio/video playback operations.
 ///
@@ -28,7 +29,17 @@ final class PlayerService {
     private let playerNode    = AVAudioPlayerNode()
     private let eqNode        = AVAudioUnitEQ(numberOfBands: 10)
     private let reverbNode    = AVAudioUnitReverb()
-    private let dynamicsNode  = AVAudioUnitDynamicsProcessor()
+    private let dynamicsNode: AVAudioUnitEffect = {
+        // macOS dynamics compressor via CoreAudio component (replaces iOS-only AVAudioUnitDynamicsProcessor)
+        let desc = AudioComponentDescription(
+            componentType:         kAudioUnitType_Effect,
+            componentSubType:      kAudioUnitSubType_DynamicsProcessor,
+            componentManufacturer: kAudioUnitManufacturer_Apple,
+            componentFlags:        0,
+            componentFlagsMask:    0
+        )
+        return AVAudioUnitEffect(audioComponentDescription: desc)
+    }()
     private let timePitchNode = AVAudioUnitTimePitch()
 
     // ── AVPlayer for video ─────────────────────────────────────────────────────

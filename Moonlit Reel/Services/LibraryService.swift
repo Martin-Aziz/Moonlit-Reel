@@ -156,7 +156,7 @@ final class LibraryService {
                 if group.isEmpty == false && processed % 64 == 0 {
                     if let item = await group.next() ?? nil {
                         await MainActor.run {
-                            if let item { self.state.upsert(item) }
+                            self.state.upsert(item)
                             processed += 1
                             self.state.scanProgress = Double(processed) / totalPaths
                         }
