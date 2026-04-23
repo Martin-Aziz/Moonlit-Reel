@@ -11,6 +11,7 @@ struct MiniPlayerView: View {
     @Environment(\.audiobookService) var audiobookService
     @Environment(\.themeService)     var themeService
     @Binding var isShowingFullscreen: Bool
+    @AppStorage("settings.showVisualizerInMini") private var showVisualizerInMini: Bool = true
 
     @State private var artwork: Image? = nil
     @State private var artworkItemID: String? = nil
@@ -35,6 +36,17 @@ struct MiniPlayerView: View {
         .padding(.horizontal, 20)
         .padding(.vertical, 10)
         .frame(height: 72)
+        .overlay(alignment: .topTrailing) {
+            if let notice = state.resumeNotice {
+                Text(notice)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(.thinMaterial, in: Capsule())
+                    .padding(.trailing, 4)
+            }
+        }
         .onChange(of: state.currentItem?.id) { _, newID in
             loadArtworkIfNeeded(for: newID)
         }
@@ -160,9 +172,11 @@ struct MiniPlayerView: View {
             }
 
             // Visualizer micro
-            MiniSpectrumView(magnitudes: playerService.fftMagnitudes)
-                .frame(width: 40, height: 20)
-                .opacity(state.isPlaying ? 1 : 0.3)
+            if showVisualizerInMini {
+                MiniSpectrumView(magnitudes: playerService.fftMagnitudes)
+                    .frame(width: 40, height: 20)
+                    .opacity(state.isPlaying ? 1 : 0.3)
+            }
         }
     }
 

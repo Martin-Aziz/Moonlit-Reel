@@ -27,6 +27,27 @@ struct ArtistGroup: Identifiable, Hashable, Sendable {
     var trackCount: Int { albums.reduce(0) { $0 + $1.trackCount } }
 }
 
+struct ScanIssue: Identifiable, Hashable, Sendable {
+    let id: UUID = UUID()
+    var filePath: String
+    var reason: String
+}
+
+struct LibraryScanReport: Identifiable, Hashable, Sendable {
+    let id: UUID = UUID()
+    var rootPath: String
+    var startedAt: Date
+    var finishedAt: Date
+    var scannedSupportedCount: Int
+    var importedCount: Int
+    var skippedUnsupportedCount: Int
+    var unsupportedExamples: [String]
+    var parseFailures: [ScanIssue]
+
+    var failedCount: Int { parseFailures.count }
+    var durationSeconds: Double { max(0, finishedAt.timeIntervalSince(startedAt)) }
+}
+
 /// The complete library state, updated incrementally from scanner events.
 @Observable
 final class LibraryState {
@@ -50,6 +71,8 @@ final class LibraryState {
     var isScanning: Bool = false
     var scanProgress: Double = 0   /// 0.0–1.0
     var lastScanDate: Date?
+    var latestScanReport: LibraryScanReport?
+    private(set) var recentScanReports: [LibraryScanReport] = []
 
     // ── Computed track counts ────────────────────────────────────────────────
     var audioTrackCount: Int { allTracks.count }
@@ -89,6 +112,23 @@ final class LibraryState {
             audiobooks[i] = book
         } else {
             audiobooks.append(book)
+        }
+    }
+
+    func replaceAudiobooks(inRoot rootURL: URL, with books: [AudiobookItem]) {
+        let rootPath = rootURL.path
+        audiobooks.removeAll { $0.folderURL.path.hasPrefix(rootPath) }
+        audiobooks.append(contentsOf: books)
+        audiobooks.sort {
+            $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending
+        }
+    }
+
+    func recordScanReport(_ report: LibraryScanReport) {
+        latestScanReport = report
+        recentScanReports.insert(report, at: 0)
+        if recentScanReports.count > 20 {
+            recentScanReports = Array(recentScanReports.prefix(20))
         }
     }
 

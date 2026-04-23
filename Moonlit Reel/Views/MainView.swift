@@ -38,6 +38,7 @@ struct MainView: View {
     @Environment(\.audiobookService) var audiobookService
     @Environment(\.searchService)    var searchService
     @Environment(\.themeService)     var themeService
+    @Environment(\.remoteService)    var remoteService
 
     @State private var selectedSection: NavigationSection? = .library
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
@@ -73,6 +74,8 @@ struct MainView: View {
         }
         .task {
             await libraryService.restoreFromBookmarks()
+            remoteService.refreshFromSettings()
+            searchService.updateFacets()
         }
     }
 

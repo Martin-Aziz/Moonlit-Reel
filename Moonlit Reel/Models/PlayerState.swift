@@ -63,6 +63,8 @@ final class PlayerState {
     var crossfadeDuration: Double = 0   /// seconds
     var isReplayGainEnabled: Bool = false
     var useAlbumGain: Bool = true
+    var replayGainPreAmpDB: Double = 0
+    var resumeNotice: String?
 
     // ── Derived ──────────────────────────────────────────────────────────────
 

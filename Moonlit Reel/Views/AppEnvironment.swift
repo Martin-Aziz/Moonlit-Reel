@@ -41,6 +41,15 @@ struct ThemeServiceKey: EnvironmentKey {
     static let defaultValue = ThemeService()
 }
 
+struct RemoteServiceKey: EnvironmentKey {
+    static let defaultValue: CompanionRemoteService = {
+        CompanionRemoteService(
+            playerService: PlayerServiceKey.defaultValue,
+            libraryService: LibraryServiceKey.defaultValue
+        )
+    }()
+}
+
 // MARK: - EnvironmentValues Extensions
 
 extension EnvironmentValues {
@@ -73,4 +82,10 @@ extension EnvironmentValues {
         get { self[ThemeServiceKey.self] }
         set { self[ThemeServiceKey.self] = newValue }
     }
+
+    var remoteService: CompanionRemoteService {
+        get { self[RemoteServiceKey.self] }
+        set { self[RemoteServiceKey.self] = newValue }
+    }
+
 }

@@ -163,6 +163,9 @@ struct AudiobookPlayerView: View {
         .onAppear {
             audiobookService.currentBook = book
         }
+        .onDisappear {
+            audiobookService.saveCurrentPosition()
+        }
     }
 
     // MARK: - Player Panel
@@ -309,9 +312,9 @@ struct AudiobookPlayerView: View {
             Divider()
 
             if showBookmarks {
-                BookmarkListView(book: book)
+                BookmarkListView(book: audiobookService.currentBook ?? book)
             } else {
-                ChapterListView(book: book)
+                ChapterListView(book: audiobookService.currentBook ?? book)
             }
         }
     }

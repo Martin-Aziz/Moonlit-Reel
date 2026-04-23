@@ -54,11 +54,26 @@ final class PlayerService {
     // ── Crossfade ─────────────────────────────────────────────────────────────
     private var crossfadeTask: Task<Void, Never>?
 
+    // ── Persistence / personalization ─────────────────────────────────────────
+    private var settingsObserver: NSObjectProtocol?
+    private var lastInsightPersistAt: Date = .distantPast
+    private var activeEqContextKey: String?
+    private var isApplyingAdaptiveEq = false
+
     // MARK: - Initialization
 
     init() {
         configureAudioGraph()
         installVisualizerTap()
+        syncSettingsFromDefaults()
+
+        settingsObserver = NotificationCenter.default.addObserver(
+            forName: UserDefaults.didChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.syncSettingsFromDefaults()
+        }
     }
 
     // MARK: - Playback Controls
@@ -175,6 +190,7 @@ final class PlayerService {
             playerNode.play()
         }
         state.positionSeconds = clamped
+        recordProgressSnapshot()
     }
 
     // MARK: - Volume & Playback Rate
@@ -196,11 +212,22 @@ final class PlayerService {
         }
     }
 
+    func applyCrossfadeDuration(_ duration: Double) {
+        state.crossfadeDuration = duration.clamped(0, 12)
+    }
+
+    func applyReplayGainSettings(enabled: Bool, useAlbumGain: Bool, preAmpDB: Double) {
+        state.isReplayGainEnabled = enabled
+        state.useAlbumGain = useAlbumGain
+        state.replayGainPreAmpDB = preAmpDB.clamped(-12, 12)
+    }
+
     // MARK: - EQ
 
     func setEqBand(index: Int, gainDB: Float) {
         guard eqNode.bands.indices.contains(index) else { return }
         eqNode.bands[index].gain = gainDB
+        persistAdaptiveEqProfileIfNeeded()
     }
 
     func eqBandGain(at index: Int) -> Float {
@@ -211,6 +238,7 @@ final class PlayerService {
     func setEqEnabled(_ enabled: Bool) {
         state.isEqEnabled = enabled
         eqNode.bypass = !enabled
+        persistAdaptiveEqProfileIfNeeded()
     }
 
     func applyEqPreset(_ preset: EqPreset) {
@@ -219,6 +247,7 @@ final class PlayerService {
             eqNode.bands[i].gain = gain
         }
         setEqEnabled(true)
+        persistAdaptiveEqProfileIfNeeded()
     }
 
     // MARK: - Private: Graph Setup
@@ -285,6 +314,10 @@ final class PlayerService {
         currentAudioFile = nil
         state.status = .loading
         state.positionSeconds = 0
+        state.currentItem = item
+
+        applyAdaptiveEqProfile(for: item)
+        PlaybackInsightsStore.recordPlayStart(itemID: item.id, durationSeconds: item.durationSeconds)
 
         if item.type_ == .video {
             loadVideo(item)
@@ -310,6 +343,22 @@ final class PlayerService {
                     self.playerNode.play()
                     self.state.status = .playing
                     self.startPositionTimer()
+
+                    if let resumePosition = self.preferredResumePosition(for: item) {
+                        Task {
+                            try? await Task.sleep(for: .milliseconds(250))
+                            await MainActor.run {
+                                self.seek(to: resumePosition)
+                                self.state.resumeNotice = "Resumed at \(self.formatTimestamp(resumePosition))"
+                            }
+                            try? await Task.sleep(for: .seconds(3))
+                            await MainActor.run {
+                                if self.state.resumeNotice?.hasPrefix("Resumed") == true {
+                                    self.state.resumeNotice = nil
+                                }
+                            }
+                        }
+                    }
                 }
             } catch {
                 await MainActor.run {
@@ -379,6 +428,99 @@ final class PlayerService {
             let sampleRate = audioFile.processingFormat.sampleRate
             state.positionSeconds = Double(nodeTime.sampleTime) / sampleRate
         }
+
+        recordProgressSnapshot()
+    }
+
+    private func syncSettingsFromDefaults() {
+        let defaults = UserDefaults.standard
+        state.crossfadeDuration = defaults.double(forKey: "settings.crossfadeDuration")
+        state.isReplayGainEnabled = defaults.bool(forKey: "settings.replayGainEnabled")
+
+        if defaults.object(forKey: "settings.useAlbumGain") != nil {
+            state.useAlbumGain = defaults.bool(forKey: "settings.useAlbumGain")
+        }
+        state.replayGainPreAmpDB = defaults.double(forKey: "settings.preAmpDB")
+    }
+
+    private func recordProgressSnapshot() {
+        guard let item = state.currentItem else { return }
+        let now = Date()
+        if now.timeIntervalSince(lastInsightPersistAt) < 1.0 {
+            return
+        }
+        lastInsightPersistAt = now
+        PlaybackInsightsStore.recordProgress(
+            itemID: item.id,
+            positionSeconds: state.positionSeconds,
+            durationSeconds: state.currentDuration
+        )
+    }
+
+    private func eqContextKey(for item: MediaItem) -> String {
+        if let album = item.album, !album.isEmpty {
+            let artist = (item.albumArtist ?? item.artist ?? "unknown").lowercased()
+            return "album:\(artist)|\(album.lowercased())"
+        }
+        if item.type_ == .audiobookChapter {
+            return "audiobook:\((item.album ?? item.displayTitle).lowercased())"
+        }
+        return "item:\(item.id)"
+    }
+
+    private func applyAdaptiveEqProfile(for item: MediaItem) {
+        let contextKey = eqContextKey(for: item)
+        activeEqContextKey = contextKey
+
+        guard let profile = PlaybackInsightsStore.adaptiveEqProfile(for: contextKey),
+              profile.gainsDB.count == eqNode.bands.count else {
+            return
+        }
+
+        isApplyingAdaptiveEq = true
+        for (index, gain) in profile.gainsDB.enumerated() {
+            eqNode.bands[index].gain = gain
+        }
+        let hasMeaningfulGain = profile.gainsDB.contains { abs($0) >= 0.1 }
+        state.isEqEnabled = hasMeaningfulGain
+        eqNode.bypass = !hasMeaningfulGain
+        isApplyingAdaptiveEq = false
+    }
+
+    private func persistAdaptiveEqProfileIfNeeded() {
+        guard !isApplyingAdaptiveEq,
+              let contextKey = activeEqContextKey else {
+            return
+        }
+
+        let gains = eqNode.bands.map { $0.gain }
+        let profile = AdaptiveEqProfile(gainsDB: gains, updatedAt: Date())
+        PlaybackInsightsStore.saveAdaptiveEqProfile(profile, contextKey: contextKey)
+    }
+
+    private func preferredResumePosition(for item: MediaItem) -> Double? {
+        guard let snapshot = PlaybackInsightsStore.snapshot(for: item.id) else { return nil }
+
+        let duration = max(item.durationSeconds, snapshot.durationSeconds)
+        guard duration > 0 else { return nil }
+
+        let isLongForm = item.type_ == .audiobookChapter || item.type_ == .video || duration >= 10 * 60
+        guard isLongForm else { return nil }
+
+        let position = snapshot.lastPositionSeconds
+        guard position >= 15, position <= duration - 10 else { return nil }
+        return position
+    }
+
+    private func formatTimestamp(_ seconds: Double) -> String {
+        let total = max(0, Int(seconds))
+        let h = total / 3600
+        let m = (total % 3600) / 60
+        let s = total % 60
+        if h > 0 {
+            return String(format: "%d:%02d:%02d", h, m, s)
+        }
+        return String(format: "%d:%02d", m, s)
     }
 }
 

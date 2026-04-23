@@ -20,7 +20,7 @@ id3        = "1.14"
 metaflac   = "0.2"
 symphonia  = { version = "0.5", features = [
     "mp3", "aac", "flac", "ogg", "wav", "aiff",
-    "alac", "mkv", "isomp4", "opus"
+    "alac", "mkv", "isomp4"
 ]}
 
 # Full-text search

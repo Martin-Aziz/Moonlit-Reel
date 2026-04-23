@@ -142,6 +142,12 @@ struct SmartPlaylist: Identifiable, Hashable, Codable, Sendable {
             return matchInt(rule, value: item.bpm ?? 0)
         case .durationSeconds:
             return matchDouble(rule, value: item.durationSeconds)
+        case .trackNumber:
+            return matchInt(rule, value: item.trackNumber ?? 0)
+        case .discNumber:
+            return matchInt(rule, value: item.discNumber ?? 0)
+        case .fileSizeBytes:
+            return matchInt(rule, value: item.fileSizeBytes)
         default:
             return true  // Unimplemented fields default to match
         }

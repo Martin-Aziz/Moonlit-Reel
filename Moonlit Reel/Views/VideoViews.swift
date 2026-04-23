@@ -133,8 +133,10 @@ struct VideoPlayerView: View {
 
     @Environment(\.playerService) var playerService
     @Environment(\.dismiss)       var dismiss
+    @Environment(\.searchService)  var searchService
 
     @State private var subtitleTrackURL: URL? = nil
+    @State private var subtitleCues: [SubtitleCue] = []
     @State private var currentSubtitle: String = ""
     @State private var isShowingControls = true
     @State private var controlsTimer: Task<Void, Never>? = nil
@@ -169,14 +171,36 @@ struct VideoPlayerView: View {
             playerService.play(item)
             detectSubtitleFile()
             scheduleControlsHide()
+
+            if let jump = bestJumpTime() {
+                Task {
+                    try? await Task.sleep(for: .milliseconds(400))
+                    await MainActor.run {
+                        playerService.seek(to: jump)
+                    }
+                }
+            }
         }
         .onDisappear {
             playerService.pause()
+            controlsTimer?.cancel()
         }
         .onContinuousHover { phase in
             switch phase {
             case .active: showControls()
             case .ended:  scheduleControlsHide()
+            }
+        }
+        .task {
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(150))
+                let line = SubtitleEngine.currentLine(
+                    at: playerService.state.positionSeconds,
+                    cues: subtitleCues
+                )
+                if currentSubtitle != (line ?? "") {
+                    currentSubtitle = line ?? ""
+                }
             }
         }
     }
@@ -216,7 +240,16 @@ struct VideoPlayerView: View {
 
                 // Subtitle toggle
                 if subtitleTrackURL != nil {
-                    Button(action: {}) {
+                    Button(action: {
+                        if currentSubtitle.isEmpty {
+                            currentSubtitle = SubtitleEngine.currentLine(
+                                at: playerService.state.positionSeconds,
+                                cues: subtitleCues
+                            ) ?? ""
+                        } else {
+                            currentSubtitle = ""
+                        }
+                    }) {
                         Image(systemName: "captions.bubble.fill")
                             .foregroundStyle(.white)
                     }
@@ -322,10 +355,23 @@ struct VideoPlayerView: View {
     }
 
     private func detectSubtitleFile() {
-        let srtURL = item.url.deletingPathExtension().appendingPathExtension("srt")
+        let srtURL = SubtitleEngine.sidecarSRTURL(for: item.url)
         if FileManager.default.fileExists(atPath: srtURL.path) {
             subtitleTrackURL = srtURL
+            subtitleCues = SubtitleEngine.parseSRT(at: srtURL)
+        } else {
+            subtitleTrackURL = nil
+            subtitleCues = []
         }
+    }
+
+    private func bestJumpTime() -> Double? {
+        guard searchService.query.lowercased().hasPrefix("quote:") else { return nil }
+        let value = String(searchService.query.dropFirst("quote:".count)).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty else { return nil }
+
+        let hits = SubtitleEngine.searchQuotesInSingleVideo(query: value, mediaURL: item.url, limit: 1)
+        return hits.first?.timestampSeconds
     }
 }
 

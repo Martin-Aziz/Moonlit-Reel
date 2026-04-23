@@ -20,6 +20,7 @@ final class AudiobookService {
     private let playerService: PlayerService
     private let libraryState: LibraryState
     private var sleepTimerTask: Task<Void, Never>?
+    private var autoSaveTask: Task<Void, Never>?
 
     // ── Persistence ───────────────────────────────────────────────────────────
     private let defaults = UserDefaults.standard
@@ -29,6 +30,16 @@ final class AudiobookService {
     init(playerService: PlayerService, libraryState: LibraryState) {
         self.playerService = playerService
         self.libraryState  = libraryState
+
+        autoSaveTask = Task { [weak self] in
+            guard let self else { return }
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(20))
+                await MainActor.run {
+                    self.saveCurrentPosition()
+                }
+            }
+        }
     }
 
     // MARK: - Detection
@@ -69,12 +80,15 @@ final class AudiobookService {
     /// Jump to a specific chapter.
     func play(book: AudiobookItem, chapterIndex: Int, startAt positionSeconds: Double = 0) {
         guard book.chapters.indices.contains(chapterIndex) else { return }
-        currentBook = book
+        var mutable = book
+        mutable.resumeChapterIndex = chapterIndex
+        mutable.resumePositionSeconds = max(0, positionSeconds)
+        currentBook = mutable
 
         // Build a queue: current chapter first, then remaining chapters as MediaItems
-        let remainingChapters = book.chapters[chapterIndex...]
+        let remainingChapters = mutable.chapters[chapterIndex...]
         let queue = remainingChapters.map { chapter in
-            makeMediaItem(from: chapter, book: book)
+            makeMediaItem(from: chapter, book: mutable)
         }
 
         playerService.play(queue: queue, startAt: 0)
@@ -174,6 +188,17 @@ final class AudiobookService {
         let position = playerService.state.positionSeconds
         defaults.set(position, forKey: resumeKey(book.id))
         defaults.set(book.resumeChapterIndex, forKey: chapterKey(book.id))
+
+        PlaybackInsightsStore.recordProgress(
+            itemID: book.id,
+            positionSeconds: position,
+            durationSeconds: book.totalDurationSeconds
+        )
+
+        var updated = book
+        updated.resumePositionSeconds = position
+        currentBook = updated
+        libraryState.upsertAudiobook(updated)
     }
 
     private func savedPosition(_ book: AudiobookItem) -> Double {

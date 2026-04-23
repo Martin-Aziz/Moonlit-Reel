@@ -197,7 +197,7 @@ impl AudiobookDetector {
             .format(&hint, mss, &FormatOptions::default(), &MetadataOptions::default())
             .context("Symphonia probe failed")?;
 
-        let format = probed.format;
+        let mut format = probed.format;
 
         let mut title = path
             .file_stem()
@@ -211,12 +211,12 @@ impl AudiobookDetector {
         if let Some(meta) = format.metadata().current() {
             for tag in meta.tags() {
                 match tag.std_key {
-                    Some(symphonia::core::meta::StandardTagKey::TrackTitle) => {
-                        title = tag.value.to_string().unwrap_or(title.clone());
-                    }
-                    Some(symphonia::core::meta::StandardTagKey::Artist) => {
-                        author = tag.value.to_string().unwrap_or_default();
-                    }
+Some(symphonia::core::meta::StandardTagKey::TrackTitle) => {
+                         title = tag.value.to_string();
+                     }
+Some(symphonia::core::meta::StandardTagKey::Artist) => {
+                         author = tag.value.to_string();
+                     }
                     _ => {}
                 }
             }
@@ -340,13 +340,12 @@ fn parse_cue_time(s: &str) -> Option<f64> {
 
 fn natord_compare(a: &str, b: &str) -> std::cmp::Ordering {
     // Simple natural ordering: compare leading numeric run numerically
-    let extract = |s: &str| -> (u64, &str) {
-        let num_end = s.find(|c: char| !c.is_ascii_digit()).unwrap_or(s.len());
-        let num: u64 = s[..num_end].parse().unwrap_or(0);
-        (num, &s[num_end..])
-    };
-    let (an, ar) = extract(a);
-    let (bn, br) = extract(b);
+    let a_num_end = a.find(|c: char| !c.is_ascii_digit()).unwrap_or(a.len());
+    let b_num_end = b.find(|c: char| !c.is_ascii_digit()).unwrap_or(b.len());
+    let an: u64 = a[..a_num_end].parse().unwrap_or(0);
+    let bn: u64 = b[..b_num_end].parse().unwrap_or(0);
+    let ar = &a[a_num_end..];
+    let br = &b[b_num_end..];
     an.cmp(&bn).then_with(|| ar.cmp(br))
 }
 

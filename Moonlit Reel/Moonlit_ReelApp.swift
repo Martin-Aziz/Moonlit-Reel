@@ -14,17 +14,20 @@ struct MoonlitReelApp: App {
     @State private var audiobookService: AudiobookService
     @State private var searchService:   SearchService
     @State private var themeService     = ThemeService()
+    @State private var remoteService:   CompanionRemoteService
 
     init() {
         let player  = PlayerService()
         let library = LibraryService()
         let search  = SearchService(libraryState: library.state)
         let audiobook = AudiobookService(playerService: player, libraryState: library.state)
+        let remote = CompanionRemoteService(playerService: player, libraryService: library)
 
         _playerService    = State(initialValue: player)
         _libraryService   = State(initialValue: library)
         _audiobookService = State(initialValue: audiobook)
         _searchService    = State(initialValue: search)
+        _remoteService    = State(initialValue: remote)
     }
 
     var body: some Scene {
@@ -36,6 +39,7 @@ struct MoonlitReelApp: App {
                 .environment(\.searchService,    searchService)
                 .environment(\.metadataService,  MetadataService())
                 .environment(\.themeService,     themeService)
+                .environment(\.remoteService,    remoteService)
         }
         .windowStyle(.titleBar)
         .windowToolbarStyle(.unified(showsTitle: true))

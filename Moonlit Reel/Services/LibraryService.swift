@@ -25,6 +25,12 @@ final class LibraryService {
     private let persistenceKey = "library.rootBookmarks"
     private var activeScans: [URL: Task<Void, Never>] = [:]
 
+    private struct ParseOutcome: Sendable {
+        var path: URL
+        var item: MediaItem?
+        var errorDescription: String?
+    }
+
     init(metadataService: MetadataService = MetadataService()) {
         self.metadataService = metadataService
     }
@@ -79,6 +85,7 @@ final class LibraryService {
         let task = Task {
             state.isScanning = true
             defer { state.isScanning = false }
+            state.scanProgress = 0
 
             guard url.startAccessingSecurityScopedResource() else {
                 return
@@ -136,42 +143,106 @@ final class LibraryService {
             options: [.skipsHiddenFiles, .skipsPackageDescendants]
         ) else { return }
 
-        // Parallel parsing: collect paths first, then parse in task group
-        var paths: [URL] = []
+        let startedAt = Date()
+
+        var allRegularFiles: [URL] = []
+        var supportedPaths: [URL] = []
+        var unsupportedExamples: [String] = []
+
         for item in enumerator.allObjects {
             guard let url = item as? URL,
-                  (try? url.resourceValues(forKeys: [.isRegularFileKey]))?.isRegularFile == true,
-                  isSupportedMediaFile(url) else { continue }
-            paths.append(url)
+                  (try? url.resourceValues(forKeys: [.isRegularFileKey]))?.isRegularFile == true else {
+                continue
+            }
+
+            allRegularFiles.append(url)
+            if isSupportedMediaFile(url) {
+                supportedPaths.append(url)
+            } else if unsupportedExamples.count < 12 {
+                unsupportedExamples.append(url.lastPathComponent)
+            }
         }
 
-        let totalPaths = Double(max(paths.count, 1))
-        var processed = 0
+        let totalSupported = supportedPaths.count
+        let totalPaths = Double(max(totalSupported, 1))
+        let skippedUnsupported = max(0, allRegularFiles.count - totalSupported)
 
-        await withTaskGroup(of: MediaItem?.self) { group in
-            for path in paths {
+        var processed = 0
+        var importedCount = 0
+        var parseFailures: [ScanIssue] = []
+        var audiobookBooksByFolder: [String: [URL]] = [:]
+
+        await withTaskGroup(of: ParseOutcome.self) { group in
+            for path in supportedPaths {
                 group.addTask { [metadataService] in
-                    try? await metadataService.parse(url: path)
+                    do {
+                        let parsed = try await metadataService.parse(url: path)
+                        return ParseOutcome(path: path, item: parsed, errorDescription: nil)
+                    } catch {
+                        return ParseOutcome(path: path, item: nil, errorDescription: error.localizedDescription)
+                    }
                 }
                 // Limit concurrency to avoid exhausting file descriptors
                 if group.isEmpty == false && processed % 64 == 0 {
-                    if let item = await group.next() ?? nil {
+                    if let outcome = await group.next() {
                         await MainActor.run {
-                            self.state.upsert(item)
+                            if let item = outcome.item {
+                                self.state.upsert(item)
+                                importedCount += 1
+
+                                if item.type_ == .audiobookChapter {
+                                    let folder = item.url.deletingLastPathComponent().path
+                                    audiobookBooksByFolder[folder, default: []].append(item.url)
+                                }
+                            } else {
+                                let reason = outcome.errorDescription ?? "Failed to parse metadata"
+                                if parseFailures.count < 200 {
+                                    parseFailures.append(ScanIssue(filePath: outcome.path.path, reason: reason))
+                                }
+                            }
                             processed += 1
                             self.state.scanProgress = Double(processed) / totalPaths
                         }
                     }
                 }
             }
-            for await item in group {
+            for await outcome in group {
                 await MainActor.run {
-                    if let item { self.state.upsert(item) }
+                    if let item = outcome.item {
+                        self.state.upsert(item)
+                        importedCount += 1
+
+                        if item.type_ == .audiobookChapter {
+                            let folder = item.url.deletingLastPathComponent().path
+                            audiobookBooksByFolder[folder, default: []].append(item.url)
+                        }
+                    } else {
+                        let reason = outcome.errorDescription ?? "Failed to parse metadata"
+                        if parseFailures.count < 200 {
+                            parseFailures.append(ScanIssue(filePath: outcome.path.path, reason: reason))
+                        }
+                    }
                     processed += 1
                     self.state.scanProgress = Double(processed) / totalPaths
                 }
             }
         }
+
+        let books = buildAudiobookItems(from: audiobookBooksByFolder)
+        state.replaceAudiobooks(inRoot: folder, with: books)
+
+        let report = LibraryScanReport(
+            rootPath: folder.path,
+            startedAt: startedAt,
+            finishedAt: Date(),
+            scannedSupportedCount: totalSupported,
+            importedCount: importedCount,
+            skippedUnsupportedCount: skippedUnsupported,
+            unsupportedExamples: unsupportedExamples,
+            parseFailures: parseFailures
+        )
+        state.recordScanReport(report)
+        state.scanProgress = 1
     }
 
     private func isSupportedMediaFile(_ url: URL) -> Bool {
@@ -195,4 +266,57 @@ final class LibraryService {
         dict[url.path] = data
         UserDefaults.standard.set(dict, forKey: persistenceKey)
     }
+
+    private func buildAudiobookItems(from groupedByFolder: [String: [URL]]) -> [AudiobookItem] {
+        var books: [AudiobookItem] = []
+
+        for (folderPath, urls) in groupedByFolder {
+            let uniqueURLs = Array(Set(urls)).sorted { $0.lastPathComponent < $1.lastPathComponent }
+            guard !uniqueURLs.isEmpty else { continue }
+
+            let folderURL = URL(fileURLWithPath: folderPath)
+            let folderName = folderURL.lastPathComponent
+            let chapterDurations = uniqueURLs.map { mediaURL -> Double in
+                state.allTracks.first(where: { $0.url == mediaURL })?.durationSeconds ?? 0
+            }
+
+            let chapters: [AudiobookChapter] = uniqueURLs.enumerated().map { index, chapterURL in
+                let duration = chapterDurations[index]
+                return AudiobookChapter(
+                    index: index,
+                    title: chapterURL.deletingPathExtension().lastPathComponent,
+                    startSeconds: 0,
+                    endSeconds: duration,
+                    fileURL: chapterURL
+                )
+            }
+
+            let total = chapters.reduce(0) { $0 + $1.durationSeconds }
+            let firstItem = state.allTracks.first(where: { $0.url == uniqueURLs.first })
+
+            let book = AudiobookItem(
+                id: sha256Hex(folderPath),
+                title: folderName,
+                author: firstItem?.artist ?? "",
+                narrator: nil,
+                folderURL: folderURL,
+                chapters: chapters,
+                totalDurationSeconds: total,
+                artworkData: nil
+            )
+
+            books.append(book)
+        }
+
+        return books.sorted {
+            $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending
+        }
+    }
+}
+
+import CryptoKit
+
+private func sha256Hex(_ raw: String) -> String {
+    let bytes = Data(raw.utf8)
+    return SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined()
 }

@@ -39,9 +39,18 @@ impl SubtitleTrack {
 
     /// Returns the active subtitle text at `position_ms`, or `None`.
     pub fn current_line(&self, position_ms: u64) -> Option<&str> {
-        self.cues
+        if let Some(active) = self.cues
             .iter()
             .find(|c| position_ms >= c.start_ms && position_ms < c.end_ms)
+            .map(|c| c.text.as_str()) {
+            return Some(active);
+        }
+
+        // Small gap-bridging avoids subtitle flicker for slightly imperfect cue timings.
+        let gap_bridge_ms = 600;
+        self.cues
+            .iter()
+            .find(|c| c.start_ms > position_ms && c.start_ms - position_ms <= gap_bridge_ms)
             .map(|c| c.text.as_str())
     }
 
@@ -54,7 +63,8 @@ impl SubtitleTrack {
 /// Parse SRT-formatted string into a list of `Subtitle` cues.
 pub fn parse_srt(content: &str) -> Result<Vec<Subtitle>> {
     let mut cues = Vec::new();
-    let mut blocks = content.split("\n\n");
+    let normalized = content.replace("\r\n", "\n").replace('\r', "\n");
+    let mut blocks = normalized.split("\n\n");
 
     for block in &mut blocks {
         let block = block.trim();

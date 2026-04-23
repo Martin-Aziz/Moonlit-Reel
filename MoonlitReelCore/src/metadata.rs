@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result};
+use id3::TagLike;
 use serde::{Deserialize, Serialize};
 use tracing::debug;
 
@@ -264,35 +265,38 @@ impl MetadataParser {
             .format(&hint, mss, &FormatOptions::default(), &MetadataOptions::default())
             .with_context(|| format!("Symphonia probe failed for {:?}", path))?;
 
-        let format = probed.format;
+        let mut format = probed.format;
 
         // Extract tags from Symphonia
         if let Some(metadata) = format.metadata().current() {
             for tag in metadata.tags() {
                 match tag.std_key {
-                    Some(symphonia::core::meta::StandardTagKey::TrackTitle) => {
-                        base.title = tag.value.to_string().ok();
-                    }
-                    Some(symphonia::core::meta::StandardTagKey::Artist) => {
-                        base.artist = tag.value.to_string().ok();
-                    }
-                    Some(symphonia::core::meta::StandardTagKey::Album) => {
-                        base.album = tag.value.to_string().ok();
-                    }
-                    Some(symphonia::core::meta::StandardTagKey::AlbumArtist) => {
-                        base.album_artist = tag.value.to_string().ok();
-                    }
-                    Some(symphonia::core::meta::StandardTagKey::Genre) => {
-                        base.genre = tag.value.to_string().ok();
-                    }
-                    Some(symphonia::core::meta::StandardTagKey::Date) => {
-                        base.year = tag.value.to_string().ok()
-                            .and_then(|d| d[..4.min(d.len())].parse().ok());
-                    }
-                    Some(symphonia::core::meta::StandardTagKey::TrackNumber) => {
-                        base.track_number = tag.value.to_string().ok()
-                            .and_then(|s| s.split('/').next()?.parse().ok());
-                    }
+Some(symphonia::core::meta::StandardTagKey::TrackTitle) => {
+                         base.title = Some(tag.value.to_string());
+                     }
+Some(symphonia::core::meta::StandardTagKey::Artist) => {
+                         base.artist = Some(tag.value.to_string());
+                     }
+Some(symphonia::core::meta::StandardTagKey::Album) => {
+                         base.album = Some(tag.value.to_string());
+                     }
+Some(symphonia::core::meta::StandardTagKey::AlbumArtist) => {
+                         base.album_artist = Some(tag.value.to_string());
+                     }
+Some(symphonia::core::meta::StandardTagKey::Genre) => {
+                         base.genre = Some(tag.value.to_string());
+                     }
+Some(symphonia::core::meta::StandardTagKey::Date) => {
+                         base.year = tag.value.to_string()
+                             .get(0..4.min(tag.value.to_string().len()))
+                             .and_then(|s| s.parse().ok());
+                     }
+Some(symphonia::core::meta::StandardTagKey::TrackNumber) => {
+                         base.track_number = tag.value.to_string()
+                             .split('/')
+                             .next()
+                             .and_then(|s| s.parse().ok());
+                     }
                     _ => {}
                 }
             }

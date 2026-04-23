@@ -194,3 +194,85 @@ final class AudiobookItemTests: XCTestCase {
         return book
     }
 }
+
+// MARK: - SearchService Tests
+
+@MainActor
+final class SearchServiceTests: XCTestCase {
+
+    override func setUp() {
+        super.setUp()
+        UserDefaults.standard.removeObject(forKey: "search.recentQueries.v1")
+        UserDefaults.standard.removeObject(forKey: "search.savedQueries.v1")
+    }
+
+    func testExactMatchRanksAboveFuzzyNeighbor() async {
+        let state = LibraryState()
+        state.upsert(makeTrack(id: "exact", title: "Comfortably Numb", artist: "Pink Floyd"))
+        state.upsert(makeTrack(id: "near", title: "Comfortable Numbers", artist: "Other Artist"))
+
+        let service = SearchService(libraryState: state)
+        service.search("Comfortably Numb")
+        try? await Task.sleep(for: .milliseconds(220))
+
+        XCTAssertEqual(service.results.first?.item.id, "exact")
+    }
+
+    func testQualifiedArtistQueryFiltersResults() async {
+        let state = LibraryState()
+        state.upsert(makeTrack(id: "r1", title: "Karma Police", artist: "Radiohead"))
+        state.upsert(makeTrack(id: "p1", title: "Time", artist: "Pink Floyd"))
+
+        let service = SearchService(libraryState: state)
+        service.search("artist:radiohead")
+        try? await Task.sleep(for: .milliseconds(220))
+
+        XCTAssertEqual(service.results.count, 1)
+        XCTAssertEqual(service.results.first?.item.id, "r1")
+    }
+
+    func testRecentAndSavedQueriesLifecycle() async {
+        let state = LibraryState()
+        state.upsert(makeTrack(id: "a", title: "Everything In Its Right Place", artist: "Radiohead"))
+
+        let service = SearchService(libraryState: state)
+        service.search("  radiohead   ")
+        try? await Task.sleep(for: .milliseconds(220))
+
+        XCTAssertEqual(service.recentQueries.first, "radiohead")
+
+        service.saveCurrentQuery()
+        XCTAssertEqual(service.savedQueries.first, "radiohead")
+
+        service.removeSavedQuery("radiohead")
+        XCTAssertTrue(service.savedQueries.isEmpty)
+    }
+
+    private func makeTrack(id: String, title: String, artist: String) -> MediaItem {
+        MediaItem(
+            id: id,
+            url: URL(fileURLWithPath: "/music/\(id).mp3"),
+            type_: .audio,
+            title: title,
+            artist: artist,
+            albumArtist: nil,
+            album: "Album",
+            genre: "Rock",
+            year: 2000,
+            trackNumber: nil,
+            discNumber: nil,
+            composer: nil,
+            comment: nil,
+            bpm: nil,
+            durationSeconds: 240,
+            sampleRate: nil,
+            bitRate: nil,
+            channelCount: nil,
+            codec: nil,
+            fileSizeBytes: 0,
+            modifiedAt: Date(),
+            replayGainTrackDB: nil,
+            replayGainAlbumDB: nil
+        )
+    }
+}

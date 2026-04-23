@@ -6,13 +6,14 @@
 
 use std::path::Path;
 use std::sync::{Arc, RwLock};
+use std::cmp::Ordering;
 
 use anyhow::{Context, Result};
 use tantivy::collector::TopDocs;
-use tantivy::query::{BooleanQuery, FuzzyTermQuery, Occur, QueryParser, RangeQuery, TermQuery};
+use tantivy::query::{BooleanQuery, FuzzyTermQuery, Occur, Query, QueryParser, TermQuery};
 use tantivy::schema::*;
-use tantivy::{doc, Document, Index, IndexReader, IndexWriter, ReloadPolicy, TantivyError};
-use tracing::{debug, info, warn};
+use tantivy::{Index, IndexReader, IndexWriter, ReloadPolicy, TantivyDocument, Term};
+use tracing::{debug, info};
 
 use crate::metadata::TrackMetadata;
 
@@ -111,7 +112,9 @@ impl SearchEngine {
     /// Supports the DSL: `artist:radiohead album:ok year:>1996 dark`
     /// Plain terms are searched across title, artist, and album.
     pub fn search(&self, query_str: &str, limit: usize) -> Result<Vec<SearchResult>> {
+        self.reader.reload()?;
         let searcher = self.reader.searcher();
+        let normalized_query = normalize_query(query_str);
 
         // Build a query parser covering the main text fields
         let mut query_parser = QueryParser::for_index(
@@ -129,11 +132,10 @@ impl SearchEngine {
         query_parser.set_field_fuzzy(self.fields.album, true, 2, true);
 
         let query = query_parser
-            .parse_query(query_str)
+            .parse_query(&normalized_query)
             .unwrap_or_else(|_| {
-                // Fallback: fuzzy search on title only for malformed queries
-                let term = Term::from_field_text(self.fields.title, query_str);
-                Box::new(FuzzyTermQuery::new(term, 2, true))
+                // Fallback: robust tokenized query for malformed input.
+                self.build_fallback_query(&normalized_query)
             });
 
         let top_docs = searcher.search(&query, &TopDocs::with_limit(limit))?;
@@ -141,11 +143,62 @@ impl SearchEngine {
         let mut results = Vec::with_capacity(top_docs.len());
         for (score, doc_address) in top_docs {
             let doc: TantivyDocument = searcher.doc(doc_address)?;
-            results.push(self.document_to_result(&doc, score));
+            let mut result = self.document_to_result(&doc, score);
+            result.score += heuristic_boost(&result, &normalized_query);
+            results.push(result);
         }
 
-        debug!("Search '{}' returned {} results", query_str, results.len());
+        results.sort_by(|lhs, rhs| {
+            rhs.score
+                .partial_cmp(&lhs.score)
+                .unwrap_or(Ordering::Equal)
+        });
+
+        debug!("Search '{}' returned {} results", normalized_query, results.len());
         Ok(results)
+    }
+
+    fn build_fallback_query(&self, query_str: &str) -> Box<dyn Query> {
+        let tokens: Vec<String> = query_str
+            .split_whitespace()
+            .map(sanitize_token)
+            .filter(|token| !token.is_empty())
+            .collect();
+
+        if tokens.is_empty() {
+            let term = Term::from_field_text(self.fields.title, query_str);
+            return Box::new(FuzzyTermQuery::new(term, 2, true));
+        }
+
+        let mut clauses: Vec<(Occur, Box<dyn Query>)> = Vec::with_capacity(tokens.len());
+        for token in tokens {
+            if let Some((field, value)) = parse_qualified_token(&token) {
+                let target_field = match field {
+                    "title" => self.fields.title,
+                    "artist" => self.fields.artist,
+                    "album" => self.fields.album,
+                    "genre" => self.fields.genre,
+                    _ => self.fields.title,
+                };
+                let term = Term::from_field_text(target_field, value);
+                clauses.push((Occur::Must, Box::new(TermQuery::new(term, IndexRecordOption::WithFreqs)) as Box<dyn Query>));
+                continue;
+            }
+
+            let term_title = Term::from_field_text(self.fields.title, &token);
+            let term_artist = Term::from_field_text(self.fields.artist, &token);
+            let term_album = Term::from_field_text(self.fields.album, &token);
+
+            let token_query = BooleanQuery::new(vec![
+                (Occur::Should, Box::new(FuzzyTermQuery::new(term_title, 2, true)) as Box<dyn Query>),
+                (Occur::Should, Box::new(FuzzyTermQuery::new(term_artist, 2, true)) as Box<dyn Query>),
+                (Occur::Should, Box::new(FuzzyTermQuery::new(term_album, 2, true)) as Box<dyn Query>),
+            ]);
+
+            clauses.push((Occur::Must, Box::new(token_query) as Box<dyn Query>));
+        }
+
+        Box::new(BooleanQuery::new(clauses))
     }
 
     fn build_document(&self, track: &TrackMetadata) -> TantivyDocument {
@@ -187,6 +240,72 @@ impl SearchEngine {
             score,
         }
     }
+}
+
+fn normalize_query(query: &str) -> String {
+    query
+        .split_whitespace()
+        .filter(|token| !token.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn parse_qualified_token(token: &str) -> Option<(&str, &str)> {
+    let (field, raw_value) = token.split_once(':')?;
+    let value = raw_value.trim_start_matches(':');
+    if field.is_empty() || value.is_empty() {
+        return None;
+    }
+    Some((field, value))
+}
+
+fn sanitize_token(token: &str) -> String {
+    let mut cleaned = token
+        .chars()
+        .filter(|ch| ch.is_alphanumeric() || *ch == ':' || *ch == '-' || *ch == '_')
+        .collect::<String>()
+        .trim_matches(':')
+        .to_string();
+
+    while cleaned.contains("::") {
+        cleaned = cleaned.replace("::", ":");
+    }
+
+    cleaned
+}
+
+fn heuristic_boost(result: &SearchResult, normalized_query: &str) -> f32 {
+    if normalized_query.is_empty() {
+        return 0.0;
+    }
+
+    let query = normalized_query.to_lowercase();
+    let title = result.title.to_lowercase();
+    let artist = result.artist.to_lowercase();
+    let album = result.album.to_lowercase();
+    let mut boost = 0.0f32;
+
+    if title == query {
+        boost += 1.8;
+    } else if title.starts_with(&query) {
+        boost += 1.2;
+    } else if title.contains(&query) {
+        boost += 0.8;
+    }
+
+    if artist == query {
+        boost += 0.7;
+    } else if artist.contains(&query) {
+        boost += 0.35;
+    }
+
+    if album == query {
+        boost += 0.5;
+    } else if album.contains(&query) {
+        boost += 0.2;
+    }
+
+    boost
 }
 
 fn build_schema() -> (Schema, SchemaFields) {
@@ -276,5 +395,31 @@ mod tests {
 
         let results = engine.search("Comfortbly", 10).unwrap(); // typo
         assert!(!results.is_empty(), "fuzzy search should handle 1-char typo");
+    }
+
+    #[test]
+    fn test_malformed_query_fallback_still_returns_results() {
+        let dir = tempdir().unwrap();
+        let engine = SearchEngine::open(dir.path()).unwrap();
+
+        engine.index_tracks(&[make_track("x", "Paranoid Android", "Radiohead")]).unwrap();
+
+        let results = engine.search("artist::radiohead (((", 10).unwrap();
+        assert!(!results.is_empty(), "fallback query path should recover from malformed syntax");
+    }
+
+    #[test]
+    fn test_exact_title_ranks_first_with_boost() {
+        let dir = tempdir().unwrap();
+        let engine = SearchEngine::open(dir.path()).unwrap();
+
+        engine.index_tracks(&[
+            make_track("1", "Karma Police", "Radiohead"),
+            make_track("2", "Karma", "Different Artist"),
+        ]).unwrap();
+
+        let results = engine.search("Karma Police", 10).unwrap();
+        assert!(!results.is_empty());
+        assert_eq!(results[0].title, "Karma Police");
     }
 }

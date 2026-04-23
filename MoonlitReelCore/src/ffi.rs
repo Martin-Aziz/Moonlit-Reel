@@ -99,7 +99,7 @@ pub unsafe extern "C" fn mr_database_set_resume(
 ) -> c_int {
     let db = guard_handle(handle);
     let id = c_str_to_string(item_id).unwrap_or_default();
-    match db.set_resume(&id, position_secs) {
+    match db.0.set_resume(&id, position_secs) {
         Ok(_)  => MR_OK,
         Err(e) => { error!("set_resume error: {}", e); MR_ERROR }
     }
@@ -119,7 +119,7 @@ pub unsafe extern "C" fn mr_database_get_resume(
 ) -> c_int {
     let db = guard_handle(handle);
     let id = c_str_to_string(item_id).unwrap_or_default();
-    match db.get_resume(&id) {
+    match db.0.get_resume(&id) {
         Ok(Some(entry)) => {
             *out_position_secs = entry.position_secs;
             MR_OK

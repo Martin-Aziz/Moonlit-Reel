@@ -221,6 +221,8 @@ private struct QueueTrackRow: View {
 struct SettingsView: View {
     @Environment(\.dismiss) var dismiss
     @Environment(\.themeService) var themeService
+    @Environment(\.playerService) var playerService
+    @Environment(\.remoteService) var remoteService
 
     @AppStorage("settings.crossfadeDuration")     var crossfadeDuration: Double = 0
     @AppStorage("settings.replayGainEnabled")     var replayGainEnabled: Bool = false
@@ -296,6 +298,8 @@ struct SettingsView: View {
                         Text("Browse to http://localhost:\(httpRemotePort) on your local network.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
+
+                        remoteStatusRow
                     }
                 }
 
@@ -322,5 +326,62 @@ struct SettingsView: View {
             }
         }
         .frame(minWidth: 420, minHeight: 480)
+        .onAppear {
+            remoteService.refreshFromSettings()
+            syncPlayerRuntimeSettings()
+        }
+        .onChange(of: httpRemoteEnabled) { _, _ in
+            remoteService.refreshFromSettings()
+        }
+        .onChange(of: httpRemotePort) { _, _ in
+            remoteService.refreshFromSettings()
+        }
+        .onChange(of: crossfadeDuration) { _, _ in
+            syncPlayerRuntimeSettings()
+        }
+        .onChange(of: replayGainEnabled) { _, _ in
+            syncPlayerRuntimeSettings()
+        }
+        .onChange(of: useAlbumGain) { _, _ in
+            syncPlayerRuntimeSettings()
+        }
+        .onChange(of: preAmpDB) { _, _ in
+            syncPlayerRuntimeSettings()
+        }
+    }
+
+    private var remoteStatusRow: some View {
+        let statusText: String
+        let tint: Color
+
+        switch remoteService.status {
+        case .stopped:
+            statusText = "Stopped"
+            tint = .secondary
+        case .running(let port):
+            statusText = "Running on :\(port)"
+            tint = .green
+        case .error(let message):
+            statusText = "Error: \(message)"
+            tint = .red
+        }
+
+        return HStack {
+            Text("Remote Status")
+            Spacer()
+            Text(statusText)
+                .foregroundStyle(tint)
+                .font(.caption)
+                .lineLimit(1)
+        }
+    }
+
+    private func syncPlayerRuntimeSettings() {
+        playerService.applyCrossfadeDuration(crossfadeDuration)
+        playerService.applyReplayGainSettings(
+            enabled: replayGainEnabled,
+            useAlbumGain: useAlbumGain,
+            preAmpDB: preAmpDB
+        )
     }
 }
