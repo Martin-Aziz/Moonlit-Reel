@@ -102,6 +102,19 @@ struct AudiobookItem: Identifiable, Hashable, Codable, Sendable {
         return chapters[resumeChapterIndex]
     }
 
+    /// The highest chapter index the user has started (chapters before this are "heard").
+    var heardUpToChapterIndex: Int { resumeChapterIndex }
+
+    enum ChapterListenState {
+        case heard, current, unheard
+    }
+
+    func listenState(for chapter: AudiobookChapter) -> ChapterListenState {
+        if chapter.index < resumeChapterIndex { return .heard }
+        if chapter.index == resumeChapterIndex { return .current }
+        return .unheard
+    }
+
     var formattedTotalDuration: String {
         Duration.seconds(totalDurationSeconds).formatted(
             .time(pattern: totalDurationSeconds >= 3600 ? .hourMinuteSecond : .minuteSecond)

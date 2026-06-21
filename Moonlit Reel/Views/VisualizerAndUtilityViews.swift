@@ -95,6 +95,9 @@ struct EqView: View {
         }
         .padding()
         .frame(minWidth: 400, minHeight: 320)
+        .onAppear {
+            PlaybackInsightsStore.recordEvent(.eqPanelOpened)
+        }
     }
 }
 

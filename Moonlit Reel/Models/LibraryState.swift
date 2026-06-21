@@ -70,6 +70,9 @@ final class LibraryState {
     // ── Scan state ───────────────────────────────────────────────────────────
     var isScanning: Bool = false
     var scanProgress: Double = 0   /// 0.0–1.0
+    var scanIndexedCount: Int = 0  /// files indexed so far (for live counter)
+    var scanTotalCount: Int = 0    /// total files to scan (for live counter)
+    var scanStartedAt: Date?       /// used for elapsed seconds display
     var lastScanDate: Date?
     var latestScanReport: LibraryScanReport?
     private(set) var recentScanReports: [LibraryScanReport] = []

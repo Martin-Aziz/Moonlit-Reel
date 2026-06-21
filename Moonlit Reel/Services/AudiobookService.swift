@@ -74,6 +74,13 @@ final class AudiobookService {
         currentBook = book
         let chapterIndex = savedChapterIndex(book)
         let position     = savedPosition(book)
+        if position > 0 || chapterIndex > 0 {
+            PlaybackInsightsStore.recordEvent(.audiobookResumed, metadata: [
+                "bookID": book.id,
+                "chapterIndex": "\(chapterIndex)",
+                "positionSeconds": "\(Int(position))"
+            ])
+        }
         play(book: book, chapterIndex: chapterIndex, startAt: position)
     }
 

@@ -23,10 +23,61 @@ struct AdaptiveEqProfile: Codable, Hashable, Sendable {
     var updatedAt: Date
 }
 
+// MARK: - Feature event log (kill-metric instrumentation)
+
+struct FeatureEvent: Codable, Sendable {
+    enum Kind: String, Codable, Sendable {
+        case libraryImportCompleted
+        case audiobookImported
+        case audiobookResumed
+        case eqPanelOpened
+        case eqPresetSaved
+        case smartPlaylistCreated
+        case firstPlayback
+    }
+    var kind: Kind
+    var occurredAt: Date
+    var metadata: [String: String]
+}
+
 enum PlaybackInsightsStore {
     private static let listeningHistoryKey = "insights.listeningHistory.v1"
     private static let adaptiveEqKey = "insights.adaptiveEqProfiles.v1"
+    private static let featureEventsKey = "insights.featureEvents.v1"
     private static let maxHistoryEntries = 1000
+    private static let maxEventEntries = 500
+
+    // MARK: Feature event recording
+
+    static func recordEvent(_ kind: FeatureEvent.Kind, metadata: [String: String] = [:]) {
+        var events = loadEvents()
+        events.append(FeatureEvent(kind: kind, occurredAt: Date(), metadata: metadata))
+        if events.count > maxEventEntries {
+            events = Array(events.suffix(maxEventEntries))
+        }
+        saveEvents(events)
+    }
+
+    static func events(ofKind kind: FeatureEvent.Kind) -> [FeatureEvent] {
+        loadEvents().filter { $0.kind == kind }
+    }
+
+    static func eventCount(ofKind kind: FeatureEvent.Kind) -> Int {
+        loadEvents().filter { $0.kind == kind }.count
+    }
+
+    private static func loadEvents() -> [FeatureEvent] {
+        guard let data = UserDefaults.standard.data(forKey: featureEventsKey),
+              let decoded = try? JSONDecoder().decode([FeatureEvent].self, from: data) else {
+            return []
+        }
+        return decoded
+    }
+
+    private static func saveEvents(_ events: [FeatureEvent]) {
+        guard let data = try? JSONEncoder().encode(events) else { return }
+        UserDefaults.standard.set(data, forKey: featureEventsKey)
+    }
 
     static func recordPlayStart(itemID: String, durationSeconds: Double) {
         guard !itemID.isEmpty else { return }

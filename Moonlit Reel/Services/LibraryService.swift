@@ -84,7 +84,13 @@ final class LibraryService {
 
         let task = Task {
             state.isScanning = true
-            defer { state.isScanning = false }
+            state.scanIndexedCount = 0
+            state.scanTotalCount = 0
+            state.scanStartedAt = Date()
+            defer {
+                state.isScanning = false
+                state.scanStartedAt = nil
+            }
             state.scanProgress = 0
 
             guard url.startAccessingSecurityScopedResource() else {
@@ -167,6 +173,8 @@ final class LibraryService {
         let totalPaths = Double(max(totalSupported, 1))
         let skippedUnsupported = max(0, allRegularFiles.count - totalSupported)
 
+        state.scanTotalCount = totalSupported
+
         var processed = 0
         var importedCount = 0
         var parseFailures: [ScanIssue] = []
@@ -201,6 +209,7 @@ final class LibraryService {
                                 }
                             }
                             processed += 1
+                            self.state.scanIndexedCount = processed
                             self.state.scanProgress = Double(processed) / totalPaths
                         }
                     }
@@ -223,6 +232,7 @@ final class LibraryService {
                         }
                     }
                     processed += 1
+                    self.state.scanIndexedCount = processed
                     self.state.scanProgress = Double(processed) / totalPaths
                 }
             }
@@ -243,6 +253,20 @@ final class LibraryService {
         )
         state.recordScanReport(report)
         state.scanProgress = 1
+
+        PlaybackInsightsStore.recordEvent(.libraryImportCompleted, metadata: [
+            "fileCount": "\(importedCount)",
+            "durationMs": "\(Int(report.durationSeconds * 1000))",
+            "audiobookCount": "\(books.count)"
+        ])
+        if !books.isEmpty {
+            PlaybackInsightsStore.recordEvent(.audiobookImported, metadata: [
+                "count": "\(books.count)"
+            ])
+        }
+        if importedCount > 0 {
+            PlaybackInsightsStore.recordEvent(.firstPlayback, metadata: [:])
+        }
     }
 
     private func isSupportedMediaFile(_ url: URL) -> Bool {

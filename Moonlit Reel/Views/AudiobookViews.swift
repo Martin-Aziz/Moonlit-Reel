@@ -85,11 +85,17 @@ private struct AudiobookCardView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            // Cover art
-            artworkView
-                .aspectRatio(1, contentMode: .fit)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
-                .shadow(radius: 5, y: 3)
+            // Cover art with circular progress ring overlay
+            ZStack(alignment: .bottomTrailing) {
+                artworkView
+                    .aspectRatio(1, contentMode: .fit)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .shadow(radius: 5, y: 3)
+
+                ProgressRingView(fraction: book.progressFraction)
+                    .frame(width: 32, height: 32)
+                    .padding(6)
+            }
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(book.title)
@@ -100,10 +106,6 @@ private struct AudiobookCardView: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .font(.caption)
-
-                // Progress bar
-                ProgressView(value: book.progressFraction)
-                    .progressViewStyle(.linear)
 
                 Text("\(book.formattedRemaining) remaining")
                     .font(.caption2)
@@ -124,6 +126,30 @@ private struct AudiobookCardView: View {
                             .font(.largeTitle)
                             .foregroundStyle(.tertiary)
                     }
+            }
+        }
+    }
+}
+
+// MARK: - Progress Ring
+
+private struct ProgressRingView: View {
+    let fraction: Double
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(.ultraThinMaterial)
+            Circle()
+                .trim(from: 0, to: fraction)
+                .stroke(style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                .foregroundStyle(.tint)
+                .rotationEffect(.degrees(-90))
+                .animation(.easeInOut, value: fraction)
+            if fraction >= 0.98 {
+                Image(systemName: "checkmark")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(.tint)
             }
         }
     }
@@ -362,10 +388,13 @@ struct ChapterListView: View {
 
     var body: some View {
         List(book.chapters) { chapter in
-            ChapterRowView(chapter: chapter, isCurrent: audiobookService.currentBook?.resumeChapterIndex == chapter.index)
-                .onTapGesture(count: 2) {
-                    audiobookService.play(book: book, chapterIndex: chapter.index)
-                }
+            ChapterRowView(
+                chapter: chapter,
+                listenState: book.listenState(for: chapter)
+            )
+            .onTapGesture(count: 2) {
+                audiobookService.play(book: book, chapterIndex: chapter.index)
+            }
         }
         .listStyle(.plain)
     }
@@ -373,26 +402,36 @@ struct ChapterListView: View {
 
 private struct ChapterRowView: View {
     let chapter: AudiobookChapter
-    let isCurrent: Bool
+    let listenState: AudiobookItem.ChapterListenState
 
     var body: some View {
         HStack {
-            if isCurrent {
-                Image(systemName: "speaker.wave.2.fill")
-                    .foregroundStyle(.tint)
-                    .symbolEffect(.variableColor.iterative, options: .repeating)
-                    .frame(width: 14)
-            } else {
-                Text("\(chapter.index + 1)")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                    .frame(width: 14)
+            // Status indicator
+            Group {
+                switch listenState {
+                case .current:
+                    Image(systemName: "speaker.wave.2.fill")
+                        .foregroundStyle(.tint)
+                        .symbolEffect(.variableColor.iterative, options: .repeating)
+                case .heard:
+                    Image(systemName: "checkmark")
+                        .foregroundStyle(.secondary)
+                case .unheard:
+                    Text("\(chapter.index + 1)")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
             }
+            .frame(width: 16)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(chapter.title)
-                    .fontWeight(isCurrent ? .semibold : .regular)
-                    .foregroundStyle(isCurrent ? AnyShapeStyle(.tint) : AnyShapeStyle(.primary))
+                    .fontWeight(listenState == .current ? .semibold : .regular)
+                    .foregroundStyle(listenState == .heard
+                        ? AnyShapeStyle(.secondary)
+                        : listenState == .current
+                            ? AnyShapeStyle(.tint)
+                            : AnyShapeStyle(.primary))
                     .lineLimit(2)
                 Text(chapter.formattedDuration)
                     .font(.caption2)
@@ -400,6 +439,7 @@ private struct ChapterRowView: View {
             }
         }
         .padding(.vertical, 2)
+        .opacity(listenState == .heard ? 0.65 : 1)
     }
 }
 
