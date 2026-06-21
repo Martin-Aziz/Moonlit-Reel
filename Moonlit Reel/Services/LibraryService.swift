@@ -68,10 +68,18 @@ final class LibraryService {
         state.libraryRootURLs.removeAll { $0 == url }
         activeScans[url]?.cancel()
         activeScans[url] = nil
-        // Remove tracks whose path starts with this folder
         let prefix = url.path
         for track in state.allTracks where track.url.path.hasPrefix(prefix) {
             state.remove(id: track.id)
+        }
+        for video in state.allVideos where video.url.path.hasPrefix(prefix) {
+            state.remove(id: video.id)
+        }
+        state.replaceAudiobooks(inRoot: url, with: [])
+        // Remove persisted bookmark for this folder
+        if var dict = UserDefaults.standard.dictionary(forKey: persistenceKey) as? [String: Data] {
+            dict.removeValue(forKey: url.path)
+            UserDefaults.standard.set(dict, forKey: persistenceKey)
         }
     }
 
@@ -318,15 +326,20 @@ final class LibraryService {
             let total = chapters.reduce(0) { $0 + $1.durationSeconds }
             let firstItem = state.allTracks.first(where: { $0.url == uniqueURLs.first })
 
+            // Load artwork synchronously from already-parsed metadata (no extra I/O needed at build time)
+            // Artwork is loaded on demand in AudiobookCardView via MetadataService, so artworkData stays nil here.
+            // However, if the first track already has artwork cached from the scan, pull it out.
+            let artworkData: Data? = nil  // Loaded lazily in AudiobookCardView via metadataService.artwork(for:)
+
             let book = AudiobookItem(
                 id: sha256Hex(folderPath),
-                title: folderName,
-                author: firstItem?.artist ?? "",
+                title: firstItem?.album ?? folderName,
+                author: firstItem?.albumArtist ?? firstItem?.artist ?? "",
                 narrator: nil,
                 folderURL: folderURL,
                 chapters: chapters,
                 totalDurationSeconds: total,
-                artworkData: nil
+                artworkData: artworkData
             )
 
             books.append(book)

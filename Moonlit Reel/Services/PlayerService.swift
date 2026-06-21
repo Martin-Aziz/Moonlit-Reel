@@ -160,6 +160,40 @@ final class PlayerService {
         loadAndPlay(state.queue[prevIndex])
     }
 
+    func toggleShuffle() {
+        state.isShuffled.toggle()
+        if state.isShuffled {
+            shuffleQueueAroundCurrent()
+        } else {
+            restoreQueueOrder()
+        }
+    }
+
+    // MARK: - Private: Shuffle helpers
+
+    private var _originalQueue: [MediaItem] = []
+
+    private func shuffleQueueAroundCurrent() {
+        guard !state.queue.isEmpty else { return }
+        _originalQueue = state.queue
+        var rest = state.queue
+        let currentItem = rest.remove(at: state.queueIndex)
+        rest.shuffle()
+        state.queue = [currentItem] + rest
+        state.queueIndex = 0
+    }
+
+    private func restoreQueueOrder() {
+        guard !_originalQueue.isEmpty else { return }
+        let currentID = state.currentItem?.id
+        state.queue = _originalQueue
+        if let id = currentID,
+           let idx = state.queue.firstIndex(where: { $0.id == id }) {
+            state.queueIndex = idx
+        }
+        _originalQueue = []
+    }
+
     func seek(to position: Double) {
         let clamped = max(0, min(position, state.currentDuration))
 
@@ -200,7 +234,8 @@ final class PlayerService {
         if state.currentItem?.type_ == .video {
             videoPlayer.volume = volume
         } else {
-            playerNode.volume = volume
+            let effective = state.isMuted ? 0 : volume
+            playerNode.volume = effective * Float(replayGainMultiplier(for: state.currentItem))
         }
     }
 
@@ -339,7 +374,8 @@ final class PlayerService {
 
                 await MainActor.run {
                     if !self.engine.isRunning { try? self.engine.start() }
-                    self.playerNode.volume = self.state.isMuted ? 0 : self.state.volume
+                    let effectiveVolume = self.state.isMuted ? 0 : self.state.volume
+                    self.playerNode.volume = effectiveVolume * Float(self.replayGainMultiplier(for: item))
                     self.playerNode.play()
                     self.state.status = .playing
                     self.startPositionTimer()
@@ -496,6 +532,20 @@ final class PlayerService {
         let gains = eqNode.bands.map { $0.gain }
         let profile = AdaptiveEqProfile(gainsDB: gains, updatedAt: Date())
         PlaybackInsightsStore.saveAdaptiveEqProfile(profile, contextKey: contextKey)
+    }
+
+    private func replayGainMultiplier(for item: MediaItem?) -> Double {
+        guard state.isReplayGainEnabled, let item else { return 1.0 }
+        let gainDB: Double
+        if state.useAlbumGain, let albumGain = item.replayGainAlbumDB {
+            gainDB = albumGain + state.replayGainPreAmpDB
+        } else if let trackGain = item.replayGainTrackDB {
+            gainDB = trackGain + state.replayGainPreAmpDB
+        } else {
+            gainDB = state.replayGainPreAmpDB
+        }
+        // Convert dB to linear amplitude; clamp to prevent clipping above 0 dBFS
+        return min(pow(10.0, gainDB / 20.0), 4.0)
     }
 
     private func preferredResumePosition(for item: MediaItem) -> Double? {

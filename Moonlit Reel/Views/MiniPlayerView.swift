@@ -10,6 +10,7 @@ struct MiniPlayerView: View {
     @Environment(\.playerService)    var playerService
     @Environment(\.audiobookService) var audiobookService
     @Environment(\.themeService)     var themeService
+    @Environment(\.metadataService)  var metadataService
     @Binding var isShowingFullscreen: Bool
     @AppStorage("settings.showVisualizerInMini") private var showVisualizerInMini: Bool = true
 
@@ -65,7 +66,12 @@ struct MiniPlayerView: View {
                     .fontWeight(.medium)
                     .lineLimit(1)
                     .foregroundStyle(state.currentItem != nil ? .primary : .secondary)
-                if let item = state.currentItem {
+                if case .error(let message) = state.status {
+                    Label(message, systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                        .lineLimit(1)
+                } else if let item = state.currentItem {
                     Text(item.displayArtist)
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -99,11 +105,12 @@ struct MiniPlayerView: View {
         VStack(spacing: 6) {
             HStack(spacing: 16) {
                 // Shuffle / Repeat
-                Button(action: {}) {
+                Button(action: playerService.toggleShuffle) {
                     Image(systemName: state.isShuffled ? "shuffle.circle.fill" : "shuffle")
                         .foregroundStyle(state.isShuffled ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
                 }
                 .buttonStyle(.plain)
+                .help(state.isShuffled ? "Shuffle: On" : "Shuffle: Off")
 
                 // Previous
                 Button(action: playerService.playPrevious) {
@@ -112,14 +119,22 @@ struct MiniPlayerView: View {
                 .buttonStyle(.plain)
                 .disabled(state.currentItem == nil)
 
-                // Play / Pause
-                Button(action: playerService.togglePlayPause) {
-                    Image(systemName: state.isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                        .font(.title)
-                        .symbolEffect(.bounce, value: state.isPlaying)
+                // Play / Pause / Loading
+                Group {
+                    if state.status == .loading {
+                        ProgressView()
+                            .controlSize(.small)
+                            .frame(width: 32, height: 32)
+                    } else {
+                        Button(action: playerService.togglePlayPause) {
+                            Image(systemName: state.isPlaying ? "pause.circle.fill" : "play.circle.fill")
+                                .font(.title)
+                                .symbolEffect(.bounce, value: state.isPlaying)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(state.currentItem == nil)
+                    }
                 }
-                .buttonStyle(.plain)
-                .disabled(state.currentItem == nil)
 
                 // Next
                 Button(action: playerService.playNext) {
@@ -197,7 +212,7 @@ struct MiniPlayerView: View {
         }
         artworkItemID = itemID
         Task {
-            if let data = await MetadataService().artwork(for: item.url),
+            if let data = await metadataService.artwork(for: item.url),
                let nsImage = NSImage(data: data) {
                 artwork = Image(nsImage: nsImage)
             } else {
@@ -285,6 +300,7 @@ struct FullscreenPlayerView: View {
     @Environment(\.playerService)    var playerService
     @Environment(\.audiobookService) var audiobookService
     @Environment(\.themeService)     var themeService
+    @Environment(\.metadataService)  var metadataService
     @Environment(\.dismiss)          var dismiss
 
     @State private var artwork: Image? = nil
@@ -422,7 +438,7 @@ struct FullscreenPlayerView: View {
     private func loadArtwork(for itemID: String?) {
         guard let item = playerService.state.currentItem else { artwork = nil; return }
         Task {
-            if let data = await MetadataService().artwork(for: item.url),
+            if let data = await metadataService.artwork(for: item.url),
                let nsImage = NSImage(data: data) {
                 artwork = Image(nsImage: nsImage)
             }

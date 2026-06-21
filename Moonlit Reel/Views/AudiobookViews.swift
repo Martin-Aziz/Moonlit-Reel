@@ -82,6 +82,8 @@ struct AudiobookLibraryView: View {
 
 private struct AudiobookCardView: View {
     let book: AudiobookItem
+    @Environment(\.metadataService) var metadataService
+    @State private var artwork: Image? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -112,11 +114,16 @@ private struct AudiobookCardView: View {
                     .foregroundStyle(.tertiary)
             }
         }
+        .task {
+            await loadArtwork()
+        }
     }
 
     private var artworkView: some View {
         Group {
-            if let data = book.artworkData, let nsImage = NSImage(data: data) {
+            if let artwork {
+                artwork.resizable().scaledToFill()
+            } else if let data = book.artworkData, let nsImage = NSImage(data: data) {
                 Image(nsImage: nsImage).resizable().scaledToFill()
             } else {
                 RoundedRectangle(cornerRadius: 10)
@@ -127,6 +134,14 @@ private struct AudiobookCardView: View {
                             .foregroundStyle(.tertiary)
                     }
             }
+        }
+    }
+
+    private func loadArtwork() async {
+        guard let firstChapterURL = book.chapters.first?.fileURL else { return }
+        if let data = await metadataService.artwork(for: firstChapterURL),
+           let nsImage = NSImage(data: data) {
+            artwork = Image(nsImage: nsImage)
         }
     }
 }

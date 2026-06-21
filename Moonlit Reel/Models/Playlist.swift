@@ -148,8 +148,20 @@ struct SmartPlaylist: Identifiable, Hashable, Codable, Sendable {
             return matchInt(rule, value: item.discNumber ?? 0)
         case .fileSizeBytes:
             return matchInt(rule, value: item.fileSizeBytes)
+        case .playCount:
+            let count = PlaybackInsightsStore.snapshot(for: item.id)?.playCount ?? 0
+            return matchInt(rule, value: count)
+        case .lastPlayed:
+            guard let date = PlaybackInsightsStore.snapshot(for: item.id)?.lastPlayedAt else {
+                return rule.op == .notEquals  // never played → treat as not matching date conditions
+            }
+            return matchDate(rule, value: date)
+        case .dateAdded:
+            return matchDate(rule, value: item.modifiedAt)
+        case .skipCount, .rating:
+            return true  // not tracked; default to match so they don't silently filter everything
         default:
-            return true  // Unimplemented fields default to match
+            return true
         }
     }
 
@@ -192,6 +204,29 @@ struct SmartPlaylist: Identifiable, Hashable, Codable, Sendable {
         case .greaterOrEqual: return value >= target
         case .lessOrEqual:    return value <= target
         default:              return false
+        }
+    }
+
+    private func matchDate(_ rule: SmartRule, value: Date) -> Bool {
+        switch rule.op {
+        case .inLast:
+            guard case .integer(let days) = rule.value else { return false }
+            let cutoff = Date().addingTimeInterval(-Double(days) * 86_400)
+            return value >= cutoff
+        case .greaterThan:
+            guard case .date(let target) = rule.value else { return false }
+            return value > target
+        case .lessThan:
+            guard case .date(let target) = rule.value else { return false }
+            return value < target
+        case .greaterOrEqual:
+            guard case .date(let target) = rule.value else { return false }
+            return value >= target
+        case .lessOrEqual:
+            guard case .date(let target) = rule.value else { return false }
+            return value <= target
+        default:
+            return false
         }
     }
 }

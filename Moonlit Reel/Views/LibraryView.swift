@@ -20,6 +20,7 @@ struct LibraryView: View {
     @State private var selectedTrackID: String? = nil
     @State private var columnCustomization = TableColumnCustomization<MediaItem>()
     @State private var showingScanReport = false
+    @State private var trackInfoItem: MediaItem? = nil
 
     private var tracks: [MediaItem] {
         if searchService.query.isEmpty {
@@ -61,6 +62,9 @@ struct LibraryView: View {
             if let report = libraryService.state.latestScanReport {
                 ScanReportDetailView(report: report)
             }
+        }
+        .sheet(item: $trackInfoItem) { item in
+            TrackInfoSheet(item: item)
         }
     }
 
@@ -143,7 +147,9 @@ struct LibraryView: View {
         Button("Play Next") { items.forEach { playerService.state.insertNext($0) } }
         Button("Add to Queue") { items.forEach { playerService.state.appendToQueue($0) } }
         Divider()
-        Button("Get Info", action: {})
+        if let first = items.first {
+            Button("Get Info") { trackInfoItem = first }
+        }
     }
 
     // MARK: - Empty State
@@ -436,6 +442,117 @@ private struct ScanReportDetailView: View {
             }
         }
         .frame(minWidth: 540, minHeight: 420)
+    }
+}
+
+// MARK: - Track Info Sheet
+
+struct TrackInfoSheet: View {
+    let item: MediaItem
+    @Environment(\.dismiss) var dismiss
+    @Environment(\.metadataService) var metadataService
+    @State private var artwork: Image? = nil
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                if let artwork {
+                    Section {
+                        HStack {
+                            Spacer()
+                            artwork.resizable()
+                                .scaledToFit()
+                                .frame(width: 160, height: 160)
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                                .shadow(radius: 4)
+                            Spacer()
+                        }
+                    }
+                }
+
+                Section("Track") {
+                    infoRow("Title",  value: item.displayTitle)
+                    infoRow("Artist", value: item.displayArtist)
+                    if let album = item.album {
+                        infoRow("Album", value: album)
+                    }
+                    if let albumArtist = item.albumArtist {
+                        infoRow("Album Artist", value: albumArtist)
+                    }
+                    if let genre = item.genre {
+                        infoRow("Genre", value: genre)
+                    }
+                    if let composer = item.composer {
+                        infoRow("Composer", value: composer)
+                    }
+                    if let year = item.year {
+                        infoRow("Year", value: "\(year)")
+                    }
+                    if let track = item.trackNumber {
+                        infoRow("Track", value: item.discNumber.map { "\(track) (disc \($0))" } ?? "\(track)")
+                    }
+                    if let bpm = item.bpm {
+                        infoRow("BPM", value: "\(bpm)")
+                    }
+                    if let comment = item.comment, !comment.isEmpty {
+                        infoRow("Comment", value: comment)
+                    }
+                }
+
+                Section("File") {
+                    infoRow("Duration", value: item.formattedDuration)
+                    if let codec = item.codec {
+                        infoRow("Format", value: codec)
+                    }
+                    if let sampleRate = item.sampleRate {
+                        infoRow("Sample Rate", value: "\(sampleRate) Hz")
+                    }
+                    if let bitRate = item.bitRate {
+                        infoRow("Bit Rate", value: "\(bitRate / 1000) kbps")
+                    }
+                    if let channels = item.channelCount {
+                        infoRow("Channels", value: channels == 1 ? "Mono" : channels == 2 ? "Stereo" : "\(channels)ch")
+                    }
+                    infoRow("Size", value: ByteCountFormatter.string(fromByteCount: Int64(item.fileSizeBytes), countStyle: .file))
+                    infoRow("Path", value: item.url.path)
+                    infoRow("Modified", value: item.modifiedAt.formatted(date: .abbreviated, time: .shortened))
+                }
+
+                if item.replayGainTrackDB != nil || item.replayGainAlbumDB != nil {
+                    Section("ReplayGain") {
+                        if let track = item.replayGainTrackDB {
+                            infoRow("Track Gain", value: String(format: "%+.2f dB", track))
+                        }
+                        if let album = item.replayGainAlbumDB {
+                            infoRow("Album Gain", value: String(format: "%+.2f dB", album))
+                        }
+                    }
+                }
+            }
+            .formStyle(.grouped)
+            .navigationTitle(item.displayTitle)
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
+        .frame(minWidth: 480, minHeight: 560)
+        .task {
+            if let data = await metadataService.artwork(for: item.url),
+               let nsImage = NSImage(data: data) {
+                artwork = Image(nsImage: nsImage)
+            }
+        }
+    }
+
+    private func infoRow(_ label: String, value: String) -> some View {
+        LabeledContent(label) {
+            Text(value)
+                .textSelection(.enabled)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+        }
     }
 }
 
